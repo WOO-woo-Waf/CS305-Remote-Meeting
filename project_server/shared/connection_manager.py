@@ -36,7 +36,7 @@ class ConnectionManager:
     def create_meeting(self, creator_id):
         """创建会议"""
         self.id_manager += 1
-        meeting_id = "meeting-" + str(self.id_manager)
+        meeting_id = "m-" + str(self.id_manager)
         self.meetings[meeting_id] = {
             "creator": creator_id,
             "participants": [creator_id]

@@ -10,7 +10,6 @@ import json
 from network.websocket_client import WebSocketClient
 from user_interface import OperationInterface, UIHandler
 
-
 # # 创建 RTP 数据包
 # def create_rtp_packet(payload_type, payload):
 #     sequence_number = int(time.time() * 1000) % 65536
@@ -125,16 +124,14 @@ from user_interface import OperationInterface, UIHandler
 #         "payload": payload
 #     }
 
+server_ip = "0.0.0.0"
+server_port = 5555
 
-
-# 主函数
-
+client_ip = "0.0.0.0"
+client_port = 5001
 
 # 在 main 函数中同时运行 start_interface 和 run 方法
 async def main():
-    # 用于通知主线程 UI 已启动
-    ui_start_event = threading.Event()
-
     # 启动 UIHandler
     ui_handler = UIHandler()
     ui_thread = threading.Thread(target=ui_handler.run_ui, daemon=True)
@@ -151,7 +148,6 @@ async def main():
 
 # 运行主程序
 if __name__ == "__main__":
-
     asyncio.run(main())
 
 

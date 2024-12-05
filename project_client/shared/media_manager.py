@@ -1,4 +1,6 @@
 # 音视频采集和播放模块，负责操作摄像头和麦克风。
+import asyncio
+import time
 
 import cv2
 import pyaudio
@@ -9,13 +11,21 @@ import numpy as np
 
 
 class MediaManager:
-    def __init__(self, rtp_client):
+    _instance = None
+
+    def __new__(cls, *args, **kwargs):
+        if not cls._instance:
+            cls._instance = super(MediaManager, cls).__new__(cls)
+        return cls._instance
+
+    def __init__(self, rtp_client, target_fps=60):
         """
         初始化媒体管理器，负责管理摄像头、麦克风和屏幕录制。
         :param rtp_client: RTP 客户端实例，用于发送音视频数据
         """
         self.rtp_client = rtp_client
         self.running = False  # 控制线程状态
+        self.target_fps = target_fps
 
     def start_camera(self):
         """
@@ -55,7 +65,7 @@ class MediaManager:
             while self.running:
                 try:
                     audio_data = stream.read(1024, exception_on_overflow=False)
-                    self.rtp_client.send_audio(audio_data)
+                    asyncio.run(self.rtp_client.send_audio(audio_data))
                 except Exception as e:
                     print("Error capturing audio:", e)
 
@@ -72,19 +82,35 @@ class MediaManager:
         """
         self.running = True
         screen_size = pyautogui.size()
+        # 计算每帧的时间间隔（秒）
+        frame_interval = 1 / self.target_fps
 
         def capture_screen():
             while self.running:
+                start_time = time.time()  # 记录当前时间
                 # 截取屏幕
                 screen = pyautogui.screenshot()
-                # 转换为 numpy 数组并压缩
-                frame = np.array(screen)
-                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                _, buffer = cv2.imencode(".jpg", frame)
-                screen_data = buffer.tobytes()
+                if screen is None:
+                    print("Failed to capture screen.")
+                    continue
 
-                # 发送屏幕录制数据
-                self.rtp_client.send_video(screen_data)
+                # print(screen)
+                # 将 PIL 图像转换为 numpy 数组
+                frame = np.array(screen)
+                # 转换颜色格式（PIL 默认是 RGB，OpenCV 需要 BGR）
+                frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+
+                # 压缩图像为 JPEG 格式
+                # _, buffer = cv2.imencode('.jpg', frame)
+                _, buffer = cv2.imencode('.png', frame)
+                screen_data = buffer.tobytes()
+                # 使用 asyncio.ensure_future 调度 send_video
+                asyncio.run(self.rtp_client.send_video(screen_data))
+                # 计算本次处理的时间
+                elapsed_time = time.time() - start_time
+                # 计算剩余时间，确保帧率稳定
+                time_to_wait = max(0, frame_interval - elapsed_time)
+                time.sleep(time_to_wait)  # 休眠，等待合适的时间间隔
 
         threading.Thread(target=capture_screen, daemon=True).start()
         print("Screen recording started.")

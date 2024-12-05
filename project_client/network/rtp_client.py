@@ -8,9 +8,11 @@ import threading
 import numpy as np
 from collections import deque
 
+MAX_UDP_PACKET_SIZE = 65000  # 定义一个最大 UDP 数据包大小，通常是 65535 字节
+
 
 class RTPClient:
-    def __init__(self, server_ip, server_port, client_ip="0.0.0.0", client_port=0, client_id=None):
+    def __init__(self, server_ip, server_port, client_port, client_id, meeting_id, client_ip="0.0.0.0"):
         """
         初始化 RTP 客户端。
         :param server_ip: RTP 服务器 IP
@@ -21,8 +23,8 @@ class RTPClient:
         """
         self.server_ip = server_ip
         self.server_port = server_port
-        self.client_id = client_id or str(uuid.uuid4())  # 自动生成 UUID
-        self.meeting_id = None  # 将在会话中指定会议 ID
+        self.client_id = client_id
+        self.meeting_id = meeting_id
 
         # 接收缓冲区
         self.buffer = deque(maxlen=20)  # 设置缓冲区大小（可根据需求调整）
@@ -40,24 +42,88 @@ class RTPClient:
         self.sock.bind((client_ip, client_port))  # 为客户端分配本地 IP 和端口
         self.client_ip, self.client_port = self.sock.getsockname()
 
-        print(f"RTP Client initialized with IP {self.client_ip} and port {self.client_port}")
+        self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 8 * 1024 * 1024)  # 增加接收缓冲区
+        self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 8 * 1024 * 1024)  # 增加发送缓冲区
 
-    def create_rtp_packet(self, payload_type, payload):
+        print(f"RTP Client initialized with IP {self.client_ip} and port {self.client_port}")
+        # ui.update_text(f"RTP Client initialized with IP {self.client_ip} and port {self.client_port}")
+
+    # def create_rtp_packet(self, payload_type, payload):
+    #     """
+    #     创建 RTP 数据包。
+    #     :param payload_type: 数据类型 (0x01: 视频, 0x02: 音频)
+    #     :param payload: 负载数据
+    #     :return: RTP 数据包
+    #     """
+    #     # payload 应该是字节流，因此 length 应该是字节流的长度
+    #     payload_length = len(payload)
+    #
+    #     # 确保 self.client_id 是一个有效的 UUID 字符串
+    #     # uuid.UUID(self.client_id) 确保转换为 UUID 类型，然后转化为字节流
+    #     client_id_bytes = uuid.UUID(self.client_id).bytes  # 转换为 16 字节的字节流
+    #     if len(client_id_bytes) != 16:
+    #         raise ValueError("client_id should be a valid UUID")
+    #
+    #     # 将 meeting_id 转换为字节流
+    #     meeting_id_bytes = self.meeting_id.encode('utf-8')  # 将 meeting_id 字符串转为字节流
+    #     # 填充字节流，如果长度小于 4 字节，填充为零
+    #     meeting_id_bytes = meeting_id_bytes.ljust(4, b'\0')[:4]  # 保证长度为 4 字节
+    #
+    #     # 创建 RTP 头部（1 字节 payload_type + 2 字节 payload_length + 16 字节 client_id + 4 字节 meeting_id）
+    #     header = struct.pack(
+    #         '!BBH16s4s',  # 格式： 1 字节 (payload_type) + 2 字节 (payload_length) + 16 字节 UUID + 4 字节 meeting_id
+    #         payload_type,  # 数据类型，视频或音频
+    #         (payload_length >> 8) & 0xFF,  # 高 8 位
+    #         payload_length & 0xFF,  # 低 8 位
+    #         client_id_bytes,  # 客户端 ID（16 字节 UUID）
+    #         meeting_id_bytes  # 会议 ID（4 字节）
+    #     )
+    #
+    #     # 返回 RTP 数据包（头部 + 负载）
+    #     return header + payload
+    def create_rtp_packet(self, payload_type, payload, sequence_number, total_packets):
         """
         创建 RTP 数据包。
         :param payload_type: 数据类型 (0x01: 视频, 0x02: 音频)
         :param payload: 负载数据
+        :param sequence_number: 包的序列号（用于视频包的排序）
+        :param total_packets: 视频总包数（用于标记整个帧的分包数量）
         :return: RTP 数据包
         """
+        # payload 应该是字节流，因此 length 应该是字节流的长度
         payload_length = len(payload)
+
+        # 确保 self.client_id 是一个有效的 UUID 字符串
+        client_id_bytes = uuid.UUID(self.client_id).bytes  # 转换为 16 字节的字节流
+        if len(client_id_bytes) != 16:
+            raise ValueError("client_id should be a valid UUID")
+
+        # 将 meeting_id 转换为字节流
+        meeting_id_bytes = self.meeting_id.encode('utf-8')  # 将 meeting_id 字符串转为字节流
+        # 填充字节流，如果长度小于 4 字节，填充为零
+        meeting_id_bytes = meeting_id_bytes.ljust(4, b'\0')[:4]  # 保证长度为 4 字节
+
+        # 将序列号和总包数转换为字节流
+        sequence_number_bytes = struct.pack('!H', sequence_number)  # 2 字节序列号
+        total_packets_bytes = struct.pack('!H', total_packets)  # 2 字节总包数
+
+        # 创建 RTP 头部（1 字节 payload_type + 2 字节 payload_length + 2 字节 sequence_number + 2 字节 total_packets + 16 字节
+        # client_id + 4 字节 meeting_id）
         header = struct.pack(
-            '!BI16sI',
-            payload_type,  # 数据类型
-            payload_length,  # 数据长度
-            uuid.UUID(self.client_id).bytes,  # 客户端 ID
-            self.meeting_id  # 会议 ID
+            '!BBH16s4sHH',  # 格式： 1 字节 (payload_type) + 2 字节 (payload_length) + 2 字节 (sequence_number) + 2 字节 (
+            # total_packets) + 16 字节 UUID + 4 字节 meeting_id
+            payload_type,  # 数据类型，视频或音频
+            (payload_length >> 8) & 0xFF,  # 高 8 位
+            payload_length & 0xFF,  # 低 8 位
+            client_id_bytes,  # 客户端 ID（16 字节 UUID）
+            meeting_id_bytes,  # 会议 ID（4 字节）
+            sequence_number,  # 包的序列号
+            total_packets  # 视频总包数
         )
+
+        # 返回 RTP 数据包（头部 + 负载）
         return header + payload
+
 
     def parse_rtp_packet(self, packet):
         """
@@ -80,17 +146,46 @@ class RTPClient:
             "payload": payload
         }
 
-    async def send_data(self, payload_type, payload):
+    async def send_video(self, video_payload):
+        """
+        发送视频数据。
+        :param video_payload: 捕获的视频帧数据
+        """
+        total_packets = len(video_payload) // MAX_UDP_PACKET_SIZE + 1  # 计算视频帧的总包数
+        sequence_number = 0  # 初始化序列号
+        while len(video_payload) > MAX_UDP_PACKET_SIZE:
+            packet_part = video_payload[:MAX_UDP_PACKET_SIZE]
+            # 检查数据包大小
+            # print(f"Packet size: {len(packet_part)} bytes")
+            sequence_number = sequence_number + 1
+            await self.send_data(payload_type=0x01, payload=packet_part, sequence_number=sequence_number, total_packets=total_packets)
+            video_payload = video_payload[MAX_UDP_PACKET_SIZE:]
+        sequence_number = sequence_number + 1
+        # 发送剩余的部分（如果有的话）
+        if video_payload:
+            await self.send_data(payload_type=0x01, payload=video_payload, sequence_number=sequence_number, total_packets=total_packets)
+
+    async def send_audio(self, audio_data):
+        """
+        发送音频数据。
+        :param audio_data: 捕获的音频数据
+        """
+        # 音频数据无需进一步编码（假设它已经是适合 RTP 传输的格式）
+        await self.send_data(payload_type=0x02, payload=audio_data,sequence_number=0, total_packets=1)
+
+    async def send_data(self, payload_type, payload, sequence_number, total_packets):
         """
         发送数据到 RTP 服务器。
+        :param total_packets:
+        :param sequence_number:
         :param payload_type: 数据类型 (0x01: 视频, 0x02: 音频)
         :param payload: 数据内容
         """
         if not self.meeting_id:
             raise ValueError("Meeting ID is not set. Please set meeting_id before sending data.")
-        packet = self.create_rtp_packet(payload_type, payload)
+        packet = self.create_rtp_packet(payload_type, payload, sequence_number, total_packets)
         self.sock.sendto(packet, (self.server_ip, self.server_port))
-        print(f"Sent RTP packet to {self.server_ip}:{self.server_port}")
+        # print(f"Sent RTP packet to {self.server_ip}:{self.server_port}")
 
     async def receive_data(self):
         """
@@ -145,4 +240,3 @@ class RTPClient:
         :param meeting_id: 会议 ID
         """
         self.meeting_id = meeting_id
-

@@ -1,11 +1,13 @@
 import asyncio
-import threading
 
 import websockets
 import json
 import uuid
 
-from user_interface import UIHandler, OperationInterface
+from user_interface import OperationInterface
+from shared.uiHandler import UIHandler
+
+ui = UIHandler()
 
 
 class WebSocketClient:
@@ -25,7 +27,7 @@ class WebSocketClient:
         self.websocket = None
         self.client_id = str(uuid.uuid4())  # 自动生成唯一的客户端 ID
         self.reconnect_delay = 5  # 断开后尝试重新连接的延迟时间（秒）
-        self.ui = UIHandler()
+        # self.ui = UIHandler()
         self.cil = OperationInterface(self)
         self.websocket_lock = asyncio.Lock()  # 在类初始化时创建锁
 
@@ -41,9 +43,11 @@ class WebSocketClient:
                 await self.websocket.send(json.dumps(init_message))
                 response = await self.websocket.recv()
                 # self.ui.update_text(f"INIT Response:, {response}")
+                ui.update_text(f"INIT Response:, {response}")
                 break  # 成功连接后退出循环
             except Exception as e:
-                self.ui.update_text(f"连接失败: {e}，将在 {self.reconnect_delay} 秒后重试...")
+                # self.ui.update_text(f"连接失败: {e}，将在 {self.reconnect_delay} 秒后重试...")
+                ui.update_text(f"连接失败: {e}，将在 {self.reconnect_delay} 秒后重试...")
                 await asyncio.sleep(self.reconnect_delay)
 
     async def create_meeting(self, meeting_id):
@@ -91,16 +95,18 @@ class WebSocketClient:
         }
         await self._send_message(send_message)
 
-    async def register_rtp_address(self, rtp_ip, rtp_port):
+    async def register_rtp_address(self, rtp_ip, rtp_port, meeting_id):
         """
         注册 RTP 地址。
+        :param meeting_id: 会议号
         :param rtp_ip: RTP IP 地址
         :param rtp_port: RTP 端口
         """
         register_message = {
             "action": "REGISTER_RTP",
             "rtp_ip": rtp_ip,
-            "rtp_port": rtp_port
+            "rtp_port": rtp_port,
+            "meeting_id": meeting_id
         }
         await self._send_message(register_message)
 
@@ -112,9 +118,10 @@ class WebSocketClient:
             try:
                 ping_message = {"action": "PING"}
                 await self._send_message(ping_message)
-                await asyncio.sleep(10)  # 每 10 秒发送一次心跳
+                await asyncio.sleep(60)  # 每 60 秒发送一次心跳
             except Exception as e:
                 print(f"心跳发送失败: {e}，尝试重新连接...")
+                ui.update_text(f"心跳发送失败: {e}，尝试重新连接...")
                 break
 
     async def listen_for_messages(self):
@@ -127,7 +134,8 @@ class WebSocketClient:
                 data = json.loads(message)
                 await self.process_server_message(data)  # 调用消息处理方法
             except websockets.ConnectionClosed:
-                self.ui.update_text("服务器连接已关闭，尝试重新连接...")
+                # self.ui.update_text("服务器连接已关闭，尝试重新连接...")
+                ui.update_text("服务器连接已关闭，尝试重新连接...")
                 break
 
     async def _send_message(self, message):
@@ -140,7 +148,8 @@ class WebSocketClient:
             try:
                 await self.websocket.send(json.dumps(message))
             except Exception as e:
-                self.ui.update_text(f"发送消息失败: {e}")
+                # self.ui.update_text(f"发送消息失败: {e}")
+                ui.update_text(f"发送消息失败: {e}")
 
     async def process_server_message(self, data):
         """
@@ -150,61 +159,64 @@ class WebSocketClient:
         try:
             action = data.get("action")  # 获取消息类型
             if not action:
-                self.ui.update_text(f"无效消息格式: {data}")
+                # self.ui.update_text(f"无效消息格式: {data}")
+                ui.update_text(f"无效消息格式: {data}")
                 return
 
             if action == "INIT_ACK":
                 # 处理初始化确认
-                self.ui.update_text(f"[服务器响应] 初始化完成: {data}")
+                # self.ui.update_text(f"[服务器响应] 初始化完成: {data}")
+                ui.update_text(f"[服务器响应] 初始化完成: {data}")
 
             elif action == "CREATE_MEETING_ACK":
                 # 处理会议创建确认
                 meeting_id = data.get("meeting_id")
                 self.cil.conference_id = meeting_id
-                self.ui.update_text(f"[服务器响应] 会议已创建，会议 ID: {meeting_id}")
+                # self.ui.update_text(f"[服务器响应] 会议已创建，会议 ID: {meeting_id}")
+                ui.update_text(f"[服务器响应] 会议已创建，会议 ID: {meeting_id}")
 
             elif action == "JOIN_MEETING_ACK":
                 # 处理加入会议确认
                 meeting_id = data.get("meeting_id")
                 participants = data.get("participants", [])
-                self.ui.update_text(f"[服务器响应] 加入会议成功，会议 ID: {meeting_id}, 当前参与者: {participants}")
+                ui.update_text(f"[服务器响应] 加入会议成功，会议 ID: {meeting_id}, 当前参与者: {participants}")
 
             elif action == "EXIT_MEETING_ACK":
                 # 处理离开会议确认
                 meeting_id = data.get("meeting_id")
-                self.ui.update_text(f"[服务器响应] 已离开会议，会议 ID: {meeting_id}")
+                ui.update_text(f"[服务器响应] 已离开会议，会议 ID: {meeting_id}")
 
             elif action == "MEETING_CANCELED":
                 # 处理取消会议确认
                 meeting_id = data.get("meeting_id")
-                self.ui.update_text(f"[服务器响应] 会议已取消，会议 ID: {meeting_id}")
+                ui.update_text(f"[服务器响应] 会议已取消，会议 ID: {meeting_id}")
 
             elif action == "NEW_MESSAGE":
                 # 处理新的文本消息
                 meeting_id = data.get("meeting_id")
                 sender = data.get("sender")
                 message = data.get("message")
-                self.ui.update_text(f"[新消息] 会议 ID: {meeting_id}, 发送者: {sender}, 内容: {message}")
+                ui.update_text(f"[新消息] 会议 ID: {meeting_id}, 发送者: {sender}, 内容: {message}")
 
             elif action == "REGISTER_RTP_ACK":
                 # 处理 RTP 地址注册确认
                 message = data.get("message")
-                self.ui.update_text(f"[服务器响应] {message}")
+                ui.update_text(f"[服务器响应] {message}")
 
             elif action == "PONG":
                 # 处理心跳确认
-                self.ui.update_text(f"[服务器响应] 心跳回复: {data}")
+                ui.update_text(f"[服务器响应] 心跳回复: {data}")
 
             elif action == "ERROR":
                 message = data.get("message")
-                self.ui.update_text(f"[服务器响应] ERROR: {message}")
+                ui.update_text(f"[服务器响应] ERROR: {message}")
 
             else:
                 # 未知消息类型
-                self.ui.update_text(f"[未知消息类型] {action}: {data}")
+                ui.update_text(f"[未知消息类型] {action}: {data}")
 
         except Exception as e:
-            self.ui.update_text(f"处理消息时发生错误: {e}, 消息内容: {data}")
+            ui.update_text(f"处理消息时发生错误: {e}, 消息内容: {data}")
 
     async def run(self):
         # while True:
