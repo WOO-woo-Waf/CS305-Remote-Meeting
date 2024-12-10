@@ -3,7 +3,7 @@ import numpy as np
 
 
 class VideoPacketAssembler:
-    def __init__(self, frame_width, frame_height, packet_size=65000):
+    def __init__(self, frame_width, frame_height, packet_size=32767):
         self.frame_width = frame_width
         self.frame_height = frame_height
         self.packet_size = packet_size  # 每个视频包的大小（最大值）

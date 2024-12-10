@@ -124,10 +124,10 @@ from user_interface import OperationInterface, UIHandler
 #         "payload": payload
 #     }
 
-server_ip = "0.0.0.0"
+server_ip = "127.0.0.1"
 server_port = 5555
 
-client_ip = "0.0.0.0"
+client_ip = "127.0.0.1"
 client_port = 5001
 
 # 在 main 函数中同时运行 start_interface 和 run 方法

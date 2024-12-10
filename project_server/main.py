@@ -38,4 +38,4 @@ async def startup_event():
     """
     在服务启动时运行：启动 RTP 服务器。
     """
-    await rtp_manager.start_udp_server(host="0.0.0.0", port=5006)
+    await rtp_manager.start_udp_server(host="0.0.0.0", port=5555)
