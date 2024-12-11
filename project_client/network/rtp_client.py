@@ -28,6 +28,8 @@ class RTPClient:
         self.server_port = server_port
         self.client_id = client_id
         self.meeting_id = meeting_id
+        self.client_ip = client_ip
+        self.client_port = client_port
 
         # 接收缓冲区
         self.buffer = deque(maxlen=20)  # 设置缓冲区大小（可根据需求调整）
@@ -42,16 +44,20 @@ class RTPClient:
         # UDP 套接字
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.setblocking(False)
-        self.sock.bind((client_ip, client_port))  # 为客户端分配本地 IP 和端口
+        while True:
+            try:    # 绑定端口
+                self.sock.bind((client_ip, client_port))
+                break
+            except OSError:
+                client_port += 1
         self.client_ip, self.client_port = self.sock.getsockname()
-
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 8 * 1024 * 1024)  # 增加接收缓冲区
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 8 * 1024 * 1024)  # 增加发送缓冲区
 
         print(f"RTP Client initialized with IP {self.client_ip} and port {self.client_port}")
         # ui.update_text(f"RTP Client initialized with IP {self.client_ip} and port {self.client_port}")
         self.video_assemblers = None  # 视频包组装器
-        self.frame_interval = 1 / 5  # 视频帧之间的时间间隔（30 FPS）
+        self.frame_interval = 1 / 30  # 视频帧之间的时间间隔（30 FPS）
         asyncio.create_task(self.receive_data())  # 开启接收任务
 
     # def create_rtp_packet(self, payload_type, payload):

@@ -28,7 +28,7 @@ class RTPManager:
         """
         初始化 RTPManager，用于管理 RTP 数据包的创建、解析和转发。
         """
-        self.frame_interval = 1 / 5  # 目标帧率（每秒 30 帧）
+        self.frame_interval = 1 / 30  # 目标帧率（每秒 30 帧）
         self.protocol = None
         self.transport = None
         self.clients = {}  # 存储 {meeting_id: {client_id: (ip, port)}}
@@ -335,7 +335,7 @@ class RTPManager:
             frame = self.dynamic_video_frame_manager.merge_video_frames(meeting_id)
             if frame is not None:
                 # 将帧编码为 JPG 格式
-                _, encoded_frame = cv2.imencode('.jpg', frame)
+                _, encoded_frame = cv2.imencode('.jpg', frame,[int(cv2.IMWRITE_JPEG_QUALITY), 10])
                 frame_data = encoded_frame.tobytes()
                 # print(f"Sending video frame to meeting {meeting_id}.")
                 # 遍历会议中的每个客户端并发送帧
