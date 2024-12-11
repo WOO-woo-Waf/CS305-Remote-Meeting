@@ -59,6 +59,68 @@ class RTPClient:
         self.video_assemblers = None  # 视频包组装器
         self.frame_interval = 1 / 30  # 视频帧之间的时间间隔（30 FPS）
         asyncio.create_task(self.receive_data())  # 开启接收任务
+        self.pipeline = (
+            f"udpsrc port={self.server_port} ! application/x-rtp, payload=96 ! rtph264depay ! avdec_h264 "
+            f"! videoconvert ! appsink"
+        )
+        self.capture = None
+        self.running = False
+        self.thread = None  # 用于接收和播放视频的线程
+
+        # 自动启动视频接收
+        # self.start_video_thread()
+
+    def start_receiving(self):
+        # Initialize GStreamer pipeline
+        self.capture = cv2.VideoCapture(self.pipeline, cv2.CAP_GSTREAMER)
+
+    def get_frame(self):
+        if self.capture is None:
+            raise ValueError("Receiving pipeline has not been started.")
+
+        ret, frame = self.capture.read()
+        if not ret:
+            return None
+        return frame
+
+    def stop_receiving(self):
+        if self.capture is not None:
+            self.capture.release()
+            self.capture = None
+
+    def recv_play_video(self):
+        try:
+            self.start_receiving()
+            while True:
+                frame = self.get_frame()
+                if frame is None:
+                    continue
+                start_time = time.time()
+                # 设置窗口大小并显示
+                resized_frame = cv2.resize(frame, (960, 540))
+                cv2.imshow("Video Stream_client_h264", resized_frame)
+                # cv2.imshow("Video Stream", frame)
+                # 等待一段时间以确保帧率稳定
+                elapsed_time = time.time() - start_time
+                time_to_wait = max(0, self.frame_interval - elapsed_time)  # 计算剩余时间，确保帧率
+                time.sleep(time_to_wait)  # 控制帧率，确保每秒显示 target_fps 帧
+                cv2.waitKey(1)
+        finally:
+            self.stop_receiving()
+            cv2.destroyAllWindows()
+
+    def start_video_thread(self):
+        """启动视频接收线程"""
+        self.running = True
+        self.thread = threading.Thread(target=self.recv_play_video, daemon=True)
+        self.thread.start()
+
+    def stop_video_thread(self):
+        """停止视频接收线程"""
+        self.running = False
+        if self.thread is not None:
+            self.thread.join()
+            self.thread = None
 
     # def create_rtp_packet(self, payload_type, payload):
     #     """

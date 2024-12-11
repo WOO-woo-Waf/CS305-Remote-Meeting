@@ -1,6 +1,7 @@
 import asyncio
 import socket
 import struct
+import subprocess
 import time
 import uuid
 from asyncio import Lock
@@ -46,6 +47,32 @@ class RTPManager:
         self.lock = asyncio.Lock()
         self.video_assemblers = {}  # 存储每个视频流的 VideoPacketAssembler
         self.video_frame = {}  # 存储每个会议的客户端帧
+        self.streams = {}  # 存储每个客户端的发送管道
+
+    def start_stream_for_client(self, client_id, host="127.0.0.1", port=5000):
+        pipeline = (
+            f"appsrc ! videoconvert ! x264enc tune=zerolatency bitrate=500 speed-preset=ultrafast "
+            f"! rtph264pay mtu=1200 ! udpsink host={host} port={port}"
+        )
+        process = subprocess.Popen(pipeline, stdin=subprocess.PIPE, shell=True)
+        self.streams[client_id] = process
+        print(f"Stream for client {client_id} started.")
+
+    def send_frame_to_client(self, client_id, frame):
+        if client_id not in self.streams or self.streams[client_id] is None:
+            raise ValueError(f"Stream for client {client_id} has not been started.")
+
+        process = self.streams[client_id]
+        resized_frame = cv2.resize(frame, (64, 36))
+
+        process.stdin.write(resized_frame.tobytes())
+
+    def stop_stream_for_client(self, client_id):
+        if client_id in self.streams and self.streams[client_id] is not None:
+            process = self.streams[client_id]
+            process.stdin.close()
+            process.wait()
+            self.streams[client_id] = None
 
     async def register_client(self, meeting_id, client_id, address):
         """
@@ -60,7 +87,8 @@ class RTPManager:
                 self.clients[meeting_id] = {}
                 self.buffers[meeting_id] = {}
                 print(f"Meeting {meeting_id} initialized.")
-                self.register_meeting(meeting_id)
+                self.register_meeting(meeting_id)  # 注册会议并启动视频帧转发任务
+                # self.start_stream_for_client(client_id, host=address[0], port=address[1])
             self.clients[meeting_id][client_id] = address
             self.buffers[meeting_id][client_id] = []  # 初始化缓冲区
             print(f"Client {client_id} registered to meeting {meeting_id}. Current clients: {self.clients}")
@@ -80,6 +108,7 @@ class RTPManager:
                     del self.buffers[meeting_id]
                 print(f"Client {client_id} unregistered from meeting {meeting_id}. Current clients: {self.clients}")
                 self.dynamic_video_frame_manager.remove_client(meeting_id, client_id)
+                # self.stop_stream_for_client(client_id)
 
     def register_meeting(self, meeting_id):
         """
@@ -335,17 +364,22 @@ class RTPManager:
             frame = self.dynamic_video_frame_manager.merge_video_frames(meeting_id)
             if frame is not None:
                 # 将帧编码为 JPG 格式
-                _, encoded_frame = cv2.imencode('.jpg', frame,[int(cv2.IMWRITE_JPEG_QUALITY), 10])
+                _, encoded_frame = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 50])
                 frame_data = encoded_frame.tobytes()
                 # print(f"Sending video frame to meeting {meeting_id}.")
                 # 遍历会议中的每个客户端并发送帧
                 async with self.lock:
                     for client_id, client_address in self.clients[meeting_id].items():
                         if client_id != exclude_client_id:
-                            # print(f"Sending video frame to {client_id} at {client_address} in meeting {meeting_id}.")
                             # 使用单独任务发送帧
                             await asyncio.create_task(
                                 self.send_data_to_client(client_id, client_address, frame_data, data_type='video'))
+            # if frame is not None:
+            #     # 遍历会议中的每个客户端并发送帧
+            #     async with self.lock:
+            #         for client_id, client_address in self.clients[meeting_id].items():
+            #             if client_id != exclude_client_id:
+            #                 self.send_frame_to_client(client_id, frame)
 
             # 控制帧率
             await asyncio.sleep(self.frame_interval)
