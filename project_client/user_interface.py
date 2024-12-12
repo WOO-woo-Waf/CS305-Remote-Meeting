@@ -73,7 +73,9 @@ class OperationInterface:
     async def join_conference(self, conference_id):
         """加入会议"""
         print(f"正在加入会议 {conference_id}...")
+
         await self.web_socket.join_meeting(conference_id)
+        await self.web_socket.send_text_message(conference_id, "Hello everyone!")
         self.on_meeting = True
         self.conference_id = conference_id
         self.status = f"会议中-{self.conference_id}"

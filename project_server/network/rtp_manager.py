@@ -5,6 +5,7 @@ import subprocess
 import time
 import uuid
 from asyncio import Lock
+from concurrent.futures import ThreadPoolExecutor
 
 from shared.Video_packet_assembler import VideoPacketAssembler
 from shared.dynamic_video_frame_manager import DynamicVideoFrameManager
@@ -14,7 +15,46 @@ import pyaudio
 import numpy as np
 import math
 
-MAX_UDP_PACKET_SIZE = 65000  # 最大 UDP 数据包大小
+MAX_UDP_PACKET_SIZE = 1400  # 最大 UDP 数据包大小
+
+import ffmpeg
+
+
+def encode_h264_frame(frame):
+    # 确保帧是 BGR 格式且具有正确的尺寸
+    if frame.dtype != np.uint8:
+        frame = frame.astype(np.uint8)
+
+    height, width, _ = frame.shape
+
+    # 创建 FFmpeg 编码器命令（以流的方式处理）
+    encode_process = (
+        ffmpeg
+        .input('pipe:0', format='rawvideo', pix_fmt='bgr24', s=f'{width}x{height}')  # 动态获取尺寸
+        .output('pipe:1', vcodec='libx264', pix_fmt='yuv420p', preset='ultrafast', crf=23, f='h264')  # 编码为 H.264 格式
+        .run_async(pipe_stdin=True, pipe_stdout=True, pipe_stderr=True)
+    )
+
+    # 将帧写入编码器，并获取编码后的字节数据
+    encoded_data, stderr = encode_process.communicate(input=frame.tobytes())
+    # 输出 FFmpeg 错误信息以帮助调试
+    # if stderr:
+    #     print("FFmpeg stderr:", stderr.decode('utf-8'))
+    # 检查是否成功编码
+    if len(encoded_data) == 0:
+        raise ValueError("Failed to encode frame. FFmpeg returned no data.")
+
+    return encoded_data
+
+
+# 读取视频帧并进行 H.264 编码
+def process_frame(frame):
+    # 假设输入的 frame 是 BGR 图像
+    # 使用 FFmpeg 进行 H.264 编码
+    # print(f"Received frame: {frame.shape}")
+    encoded_data = encode_h264_frame(frame)
+    # print(f"Encoded frame size: {len(encoded_data)} bytes")
+    return encoded_data
 
 
 class RTPManager:
@@ -29,10 +69,12 @@ class RTPManager:
         """
         初始化 RTPManager，用于管理 RTP 数据包的创建、解析和转发。
         """
+        self.start_port = 6000  # RTP 服务器起始端口
         self.frame_interval = 1 / 30  # 目标帧率（每秒 30 帧）
         self.protocol = None
         self.transport = None
         self.clients = {}  # 存储 {meeting_id: {client_id: (ip, port)}}
+        self.client_sockets = {}  # 存储每个客户端的socket
         self.buffers = {}  # 存储 {meeting_id: {client_id: [data1, data2, ...]}}
         self.buffer_size = 1  # 默认缓冲区大小
         self.connection_manager = ConnectionManager()  # 保持连接管理逻辑
@@ -48,6 +90,7 @@ class RTPManager:
         self.video_assemblers = {}  # 存储每个视频流的 VideoPacketAssembler
         self.video_frame = {}  # 存储每个会议的客户端帧
         self.streams = {}  # 存储每个客户端的发送管道
+        self.executor = ThreadPoolExecutor(max_workers=5)  # 最大线程池数
 
     def start_stream_for_client(self, client_id, host="127.0.0.1", port=5000):
         pipeline = (
@@ -74,6 +117,25 @@ class RTPManager:
             process.wait()
             self.streams[client_id] = None
 
+    async def register_socket(self, client_id):
+        """
+        注册客户端的socket。
+        :param client_id: 客户端 ID
+        """
+        self.client_sockets[client_id] = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        while True:
+            try:
+                self.client_sockets[client_id].bind(("127.0.0.1", self.start_port))
+                self.client_sockets[client_id].setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF,
+                                                          8 * 1024 * 1024)  # 8MB 接收缓冲区
+                self.client_sockets[client_id].setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF,
+                                                          8 * 1024 * 1024)  # 8MB 发送缓冲区
+                break
+            except OSError:
+                self.start_port += 1
+        client_address = self.client_sockets[client_id].getsockname()
+        print(f"Client {client_id} socket registered at {client_address}.")
+
     async def register_client(self, meeting_id, client_id, address):
         """
         注册客户端到会议中。
@@ -87,8 +149,10 @@ class RTPManager:
                 self.clients[meeting_id] = {}
                 self.buffers[meeting_id] = {}
                 print(f"Meeting {meeting_id} initialized.")
+
                 self.register_meeting(meeting_id)  # 注册会议并启动视频帧转发任务
-                # self.start_stream_for_client(client_id, host=address[0], port=address[1])
+                # self.start_stream_for_client(client_id, host=address[0], port=address[1]) # 相关管道发送的内容，这里并未完成
+            await self.register_socket(client_id)
             self.clients[meeting_id][client_id] = address
             self.buffers[meeting_id][client_id] = []  # 初始化缓冲区
             print(f"Client {client_id} registered to meeting {meeting_id}. Current clients: {self.clients}")
@@ -273,9 +337,8 @@ class RTPManager:
             self.video_assemblers[(meeting_id, client_id)].start_assembling(total_packets)
 
         # 将视频包添加到组装器中
-        frame = self.video_assemblers[(meeting_id, client_id)].add_packet(video_payload, sequence_number)
-        # print(f"Received video packet {sequence_number + 1}
-        # /{total_packets} from {client_id} in meeting {meeting_id}.")
+        frame = self.video_assemblers[(meeting_id, client_id)].add_packet(video_payload, sequence_number, total_packets)
+        # frame = self.video_assemblers[(meeting_id, client_id)].get_decoded_frame()  # 阻塞式获取解码后的帧
         if frame is not None:
             self.dynamic_video_frame_manager.add_or_update_client_frame(meeting_id, client_id, frame)
             # print(f"Playing video stream {client_id} in meeting {meeting_id}")
@@ -290,6 +353,7 @@ class RTPManager:
             # time_to_wait = max(0, self.frame_interval - elapsed_time)  # 计算剩余时间，确保帧率
             # time.sleep(time_to_wait)  # 控制帧率，确保每秒显示 target_fps 帧
             # cv2.waitKey(1)
+
 
     def play_audio(self, client_id, meeting_id, audio_payload):
         """
@@ -327,7 +391,6 @@ class RTPManager:
 
         # print(f"Sent {data_type} packet {sequence_number + 1}/{num_packets} to {client_id} at {client_address}.")
         payload_type = 0x01 if data_type == 'video' else 0x02
-
         total_packets = len(video_payload) // MAX_UDP_PACKET_SIZE + 1  # 计算视频帧的总包数
         sequence_number = 0  # 初始化序列号
         while len(video_payload) > MAX_UDP_PACKET_SIZE:
@@ -338,15 +401,16 @@ class RTPManager:
             rtp_packet = self.create_rtp_packet(payload_type=payload_type, payload=packet_part,
                                                 sequence_number=sequence_number,
                                                 total_packets=total_packets)
-            self.transport.sendto(rtp_packet, client_address)
+            self.client_sockets[client_id].sendto(rtp_packet, client_address)
             video_payload = video_payload[MAX_UDP_PACKET_SIZE:]
-        sequence_number = sequence_number + 1
+
         # 发送剩余的部分（如果有的话）
         if video_payload:
+            sequence_number = sequence_number + 1
             rtp_packet = self.create_rtp_packet(payload_type=payload_type, payload=video_payload,
                                                 sequence_number=sequence_number,
                                                 total_packets=total_packets)
-            self.transport.sendto(rtp_packet, client_address)
+            self.client_sockets[client_id].sendto(rtp_packet, client_address)
 
     async def send_video_to_meeting(self, meeting_id, exclude_client_id=None):
         """
@@ -364,16 +428,24 @@ class RTPManager:
             frame = self.dynamic_video_frame_manager.merge_video_frames(meeting_id)
             if frame is not None:
                 # 将帧编码为 JPG 格式
-                _, encoded_frame = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 50])
-                frame_data = encoded_frame.tobytes()
-                # print(f"Sending video frame to meeting {meeting_id}.")
-                # 遍历会议中的每个客户端并发送帧
-                async with self.lock:
-                    for client_id, client_address in self.clients[meeting_id].items():
-                        if client_id != exclude_client_id:
-                            # 使用单独任务发送帧
-                            await asyncio.create_task(
-                                self.send_data_to_client(client_id, client_address, frame_data, data_type='video'))
+                # _, encoded_frame = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 50])
+                # frame_data = encoded_frame.tobytes()
+                frame_data = process_frame(frame)
+                # async with self.lock:
+                #     for client_id, client_address in self.clients[meeting_id].items():
+                #         if client_id != exclude_client_id:
+                #             # 使用单独任务发送帧
+                #             await asyncio.create_task(
+                #                 self.send_data_to_client(client_id, client_address, frame_data, data_type='video'))
+
+                # 使用线程池处理视频数据传输
+                tasks = [
+                    asyncio.create_task(
+                        self.send_data_to_client(client_id, client_address, frame_data, data_type='video'))
+                    for client_id, client_address in self.clients[meeting_id].items()
+                    if client_id != exclude_client_id
+                ]
+                await asyncio.gather(*tasks)
             # if frame is not None:
             #     # 遍历会议中的每个客户端并发送帧
             #     async with self.lock:
@@ -383,6 +455,13 @@ class RTPManager:
 
             # 控制帧率
             await asyncio.sleep(self.frame_interval)
+
+    def mix_audio(self, audio_buffers):
+        # 混合音频数据，这里假设音频数据是PCM格式
+        mixed_audio = np.zeros_like(audio_buffers[0])
+        for buffer in audio_buffers:
+            mixed_audio += buffer
+        return mixed_audio.astype(np.int16)
 
     async def send_audio_to_meeting(self, meeting_id, audio_data, exclude_client_id=None):
         """

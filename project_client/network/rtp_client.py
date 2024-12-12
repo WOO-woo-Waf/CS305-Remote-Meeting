@@ -4,6 +4,7 @@ import struct
 import time
 import uuid
 import cv2
+import ffmpeg
 import pyaudio
 import threading
 import numpy as np
@@ -11,7 +12,7 @@ from collections import deque
 
 from project_client.shared.Video_packet_assembler import VideoPacketAssembler
 
-MAX_UDP_PACKET_SIZE = 65000  # 定义一个最大 UDP 数据包大小，通常是 65535 字节
+MAX_UDP_PACKET_SIZE = 1400  # 定义一个最大 UDP 数据包大小，通常是 65535 字节
 
 
 class RTPClient:
@@ -371,16 +372,19 @@ class RTPClient:
 
         # 如果合并成功，播放视频
         if frame is not None:
-            # print(f"Playing video stream {client_id} in meeting {meeting_id}")
+            # print("Playing video...")
             # 获取当前时间戳
             start_time = time.time()
             # 设置窗口大小并显示
-            resized_frame = cv2.resize(frame, (960, 540))
-            cv2.imshow("Video Stream_client", resized_frame)
-            # cv2.imshow("Video Stream", frame)
+            cv2.imshow(f"Video Stream_client{self.meeting_id}", frame)
             # 等待一段时间以确保帧率稳定
             elapsed_time = time.time() - start_time
             time_to_wait = max(0, self.frame_interval - elapsed_time)  # 计算剩余时间，确保帧率
             time.sleep(time_to_wait)  # 控制帧率，确保每秒显示 target_fps 帧
             cv2.waitKey(1)
+        # else:
+        #     print(f"Received video packet {sequence_number}/{total_packets}")
+
+
+
 

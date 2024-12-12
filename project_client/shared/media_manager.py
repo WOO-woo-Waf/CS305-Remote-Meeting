@@ -3,6 +3,7 @@ import asyncio
 import time
 
 import cv2
+import ffmpeg
 import pyaudio
 import threading
 import pyautogui
@@ -102,8 +103,9 @@ class MediaManager:
 
                 # 压缩图像为 JPEG 格式
                 # _, buffer = cv2.imencode('.jpg', frame)
-                _, buffer = cv2.imencode('.png', frame)
-                screen_data = buffer.tobytes()
+                # _, buffer = cv2.imencode('.png', frame)
+                # screen_data = buffer.tobytes()
+                screen_data = process_frame(frame)
                 # 使用 asyncio.ensure_future 调度 send_video
                 asyncio.run(self.rtp_client.send_video(screen_data))
                 # 计算本次处理的时间
@@ -121,3 +123,40 @@ class MediaManager:
         """
         self.running = False
         print("All media capturing stopped.")
+
+
+def encode_h264_frame(frame):
+    # 确保帧是 BGR 格式且具有正确的尺寸
+    if frame.dtype != np.uint8:
+        frame = frame.astype(np.uint8)
+
+    height, width, _ = frame.shape
+
+    # 创建 FFmpeg 编码器命令（以流的方式处理）
+    encode_process = (
+        ffmpeg
+        .input('pipe:0', format='rawvideo', pix_fmt='bgr24', s=f'{width}x{height}')  # 动态获取尺寸
+        .output('pipe:1', vcodec='libx264', pix_fmt='yuv420p', preset='ultrafast', crf=23, f='h264')  # 编码为 H.264 格式
+        .run_async(pipe_stdin=True, pipe_stdout=True, pipe_stderr=True)
+    )
+
+    # 将帧写入编码器，并获取编码后的字节数据
+    encoded_data, stderr = encode_process.communicate(input=frame.tobytes())
+    # 输出 FFmpeg 错误信息以帮助调试
+    # if stderr:
+    #     print("FFmpeg stderr:", stderr.decode('utf-8'))
+    # 检查是否成功编码
+    if len(encoded_data) == 0:
+        raise ValueError("Failed to encode frame. FFmpeg returned no data.")
+
+    return encoded_data
+
+
+# 读取视频帧并进行 H.264 编码
+def process_frame(frame):
+    # 假设输入的 frame 是 BGR 图像
+    # 使用 FFmpeg 进行 H.264 编码
+    # print(f"Received frame: {frame.shape}")
+    encoded_data = encode_h264_frame(frame)
+    # print(f"Encoded frame size: {len(encoded_data)} bytes")
+    return encoded_data

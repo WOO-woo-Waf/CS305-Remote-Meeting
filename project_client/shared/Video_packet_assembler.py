@@ -1,4 +1,5 @@
 import cv2
+import ffmpeg
 import numpy as np
 
 
@@ -50,6 +51,42 @@ class VideoPacketAssembler:
         :return: OpenCV 图像（frame）
         """
         # 将字节数据转换为 OpenCV 图像
-        frame_array = np.frombuffer(video_data, dtype=np.uint8)
-        frame = cv2.imdecode(frame_array, cv2.IMREAD_COLOR)
+        # frame_array = np.frombuffer(video_data, dtype=np.uint8)
+        # frame = cv2.imdecode(frame_array, cv2.IMREAD_COLOR)
+        frame = decode_h264_with_ffmpeg(video_data)
         return frame
+
+
+def decode_h264_with_ffmpeg(frame_data, width=960, height=540):
+    if len(frame_data) == 0:
+        raise ValueError("Received empty frame data.")
+
+    # 使用 FFmpeg 解码 H.264 数据
+    try:
+        # 创建 FFmpeg 解码器命令
+        process = (
+            ffmpeg
+            .input('pipe:0', format='h264')  # 输入是 H.264 编码的流
+            .output('pipe:1', format='rawvideo', pix_fmt='bgr24', s=f'{width}x{height}', flags='low_delay')
+            .run_async(pipe_stdin=True, pipe_stdout=True, pipe_stderr=True)
+        )
+
+        # 将编码数据写入 FFmpeg stdin，获取解码后的数据流
+        decoded_data, stderr = process.communicate(input=frame_data)
+
+        # # 输出 FFmpeg 错误信息，帮助调试
+        # if stderr:
+        #     print("FFmpeg stderr:", stderr.decode('utf-8'))
+
+        # 检查解码是否成功
+        if len(decoded_data) == 0:
+            raise ValueError("FFmpeg returned no data after decoding.")
+
+        # 将字节数据转为 NumPy 数组，表示 BGR 格式图像
+        frame = np.frombuffer(decoded_data, np.uint8).reshape((height, width, 3))  # 根据分辨率调整形状
+
+        return frame
+    except Exception as e:
+        print(f"Error during decoding: {str(e)}")
+        raise
+

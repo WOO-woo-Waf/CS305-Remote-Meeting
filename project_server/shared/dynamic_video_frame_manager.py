@@ -99,6 +99,11 @@ class DynamicVideoFrameManager:
         """
         if frame is None or not isinstance(frame, np.ndarray) or frame.size == 0:
             raise ValueError("Invalid frame data.")
+        # 检查输入帧是否为 BGR 格式（3 个通道）
+        if frame.shape[-1] != 3:
+            raise ValueError("Input frame is not in BGR format. Expected 3 channels (BGR).")
+
+        # 确保帧的数据类型为 uint8
         if frame.dtype != np.uint8:
             frame = frame.astype(np.uint8)
 
