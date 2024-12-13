@@ -66,11 +66,13 @@ class WebSocketManager:
             # 捕获 WebSocket 连接关闭的异常
             print(f"Client {client_id} disconnected. Reason: {e.code}, {e.reason}")
             self.connection_manager.remove_connection(client_id)
+            await self.rtp_manager.unregister_client(client_id, self.connection_manager.get_meeting_id(client_id))
             self.connection_manager.clean_up()
         except Exception as e:
             # 捕获其他异常
             print(f"Unexpected error for client {client_id}: {e}")
             self.connection_manager.remove_connection(client_id)
+            await self.rtp_manager.unregister_client(client_id, self.connection_manager.get_meeting_id(client_id))
             self.connection_manager.clean_up()
 
     async def process_message(self, client_id, data):

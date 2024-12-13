@@ -102,10 +102,10 @@ class MediaManager:
                 frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
 
                 # 压缩图像为 JPEG 格式
-                # _, buffer = cv2.imencode('.jpg', frame)
+                _, buffer = cv2.imencode('.jpg', frame)
                 # _, buffer = cv2.imencode('.png', frame)
-                # screen_data = buffer.tobytes()
-                screen_data = process_frame(frame)
+                screen_data = buffer.tobytes()
+                # screen_data = process_frame(frame)
                 # 使用 asyncio.ensure_future 调度 send_video
                 asyncio.run(self.rtp_client.send_video(screen_data))
                 # 计算本次处理的时间

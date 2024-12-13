@@ -12,7 +12,7 @@ from collections import deque
 
 from project_client.shared.Video_packet_assembler import VideoPacketAssembler
 
-MAX_UDP_PACKET_SIZE = 1400  # 定义一个最大 UDP 数据包大小，通常是 65535 字节
+MAX_UDP_PACKET_SIZE = 65000  # 定义一个最大 UDP 数据包大小，通常是 65535 字节
 
 
 class RTPClient:
@@ -289,7 +289,7 @@ class RTPClient:
         while True:
             try:
                 # 接收批量 RTP 数据包
-                data = await loop.sock_recv(self.sock, 65000)
+                data = await loop.sock_recv(self.sock, 65535)
                 data_ = self.parse_rtp_packet(data)
                 # print(f"Received RTP packet from : {data_["timestamp"]}")
 
@@ -368,7 +368,7 @@ class RTPClient:
             self.video_assemblers.start_assembling(total_packets)
 
         # 将视频包添加到组装器中
-        frame = self.video_assemblers.add_packet(video_payload, sequence_number)
+        frame = self.video_assemblers.add_packet(video_payload, sequence_number, total_packets)
 
         # 如果合并成功，播放视频
         if frame is not None:

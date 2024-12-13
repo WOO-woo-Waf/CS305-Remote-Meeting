@@ -15,7 +15,7 @@ import pyaudio
 import numpy as np
 import math
 
-MAX_UDP_PACKET_SIZE = 1400  # 最大 UDP 数据包大小
+MAX_UDP_PACKET_SIZE = 65000  # 最大 UDP 数据包大小
 
 import ffmpeg
 
@@ -126,10 +126,10 @@ class RTPManager:
         while True:
             try:
                 self.client_sockets[client_id].bind(("127.0.0.1", self.start_port))
-                self.client_sockets[client_id].setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF,
-                                                          8 * 1024 * 1024)  # 8MB 接收缓冲区
-                self.client_sockets[client_id].setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF,
-                                                          8 * 1024 * 1024)  # 8MB 发送缓冲区
+                # self.client_sockets[client_id].setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF,
+                #                                           8 * 1024 * 1024)  # 8MB 接收缓冲区
+                # self.client_sockets[client_id].setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF,
+                #                                           8 * 1024 * 1024)  # 8MB 发送缓冲区
                 break
             except OSError:
                 self.start_port += 1
@@ -332,8 +332,7 @@ class RTPManager:
         """
         # 如果没有为该视频流初始化组装器，则创建一个新的
         if (meeting_id, client_id) not in self.video_assemblers:
-            self.video_assemblers[(meeting_id, client_id)] = VideoPacketAssembler(frame_width=1920, frame_height=1080,
-                                                                                  packet_size=65000)
+            self.video_assemblers[(meeting_id, client_id)] = VideoPacketAssembler(frame_width=960, frame_height=540)
             self.video_assemblers[(meeting_id, client_id)].start_assembling(total_packets)
 
         # 将视频包添加到组装器中
@@ -428,9 +427,9 @@ class RTPManager:
             frame = self.dynamic_video_frame_manager.merge_video_frames(meeting_id)
             if frame is not None:
                 # 将帧编码为 JPG 格式
-                # _, encoded_frame = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 50])
-                # frame_data = encoded_frame.tobytes()
-                frame_data = process_frame(frame)
+                _, encoded_frame = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 50])
+                frame_data = encoded_frame.tobytes()
+                # frame_data = process_frame(frame)
                 # async with self.lock:
                 #     for client_id, client_address in self.clients[meeting_id].items():
                 #         if client_id != exclude_client_id:

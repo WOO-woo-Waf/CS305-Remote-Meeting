@@ -86,7 +86,7 @@ class DynamicVideoFrameManager:
                 index += 1
 
         # 降低整体分辨率
-        reduced_resolution = (self.frame_width * 2, self.frame_height * 2)
+        reduced_resolution = (self.frame_width, self.frame_height)
         combined_frame = cv2.resize(combined_frame, reduced_resolution)
 
         return combined_frame

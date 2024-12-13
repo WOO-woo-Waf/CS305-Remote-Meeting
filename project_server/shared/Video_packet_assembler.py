@@ -8,10 +8,9 @@ import numpy as np
 
 
 class VideoPacketAssembler:
-    def __init__(self, frame_width, frame_height, packet_size=65000):
+    def __init__(self, frame_width, frame_height):
         self.frame_width = frame_width
         self.frame_height = frame_height
-        self.packet_size = packet_size  # 每个视频包的大小（最大值）
         self.total_packets = 0  # 视频包的总数
         self.packets_received = 0  # 已接收的视频包数
         self.packets = {}  # 存储接收到的视频包
@@ -56,6 +55,7 @@ class VideoPacketAssembler:
             sorted_packets = [self.packets[i] for i in sorted(self.packets.keys())]
             video_frame = b''.join(sorted_packets)  # 合并所有视频包的数据
 
+            sorted_packets.clear()
             # 异步解码
             # print(f"Decoding video frame with {len(video_frame)} bytes.")
             # self.async_decoder.decode_async(video_frame)
@@ -64,10 +64,6 @@ class VideoPacketAssembler:
             return frame
 
         return None  # 如果包没有全部到齐，返回 None
-
-    def stop(self):
-        """停止解码器"""
-        self.async_decoder.stop()
 
     def _on_frame_decoded(self, frame):
         """将解码后的帧放入队列"""
@@ -118,9 +114,9 @@ class VideoPacketAssembler:
         :return: OpenCV 图像（frame）
         """
         # 将字节数据转换为 OpenCV 图像
-        # frame_array = np.frombuffer(video_data, dtype=np.uint8)
-        # frame = cv2.imdecode(frame_array, cv2.IMREAD_COLOR)
-        frame = decode_h264_with_ffmpeg(video_data)
+        frame_array = np.frombuffer(video_data, dtype=np.uint8)
+        frame = cv2.imdecode(frame_array, cv2.IMREAD_COLOR)
+        # frame = decode_h264_with_ffmpeg(video_data)
         return frame
 
 

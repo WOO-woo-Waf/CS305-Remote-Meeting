@@ -18,6 +18,10 @@ class ConnectionManager:
         self.user_meeting_map = {}  # 存储每个用户的当前会议
         self.id_manager = 0
 
+    def get_meeting_id(self, client_id):
+        """获取客户端当前会议 ID"""
+        return self.user_meeting_map.get(client_id)
+
     # === 连接管理 ===
     def add_connection(self, client_id, websocket):
         """添加客户端连接"""

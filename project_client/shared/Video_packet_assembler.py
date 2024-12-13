@@ -21,7 +21,7 @@ class VideoPacketAssembler:
         self.packets_received = 0
         self.packets = {}  # 清空之前的包
 
-    def add_packet(self, packet_data, sequence_number):
+    def add_packet(self, packet_data, sequence_number, total_packets):
         """
         将视频包添加到组装器，并合并完整帧。
         :param packet_data: 视频包数据
@@ -29,20 +29,25 @@ class VideoPacketAssembler:
         :return: 如果所有包合并完成，返回完整帧；否则返回 None。
         """
         # 存储接收到的视频包
+        # print(f"Received packet {sequence_number}.")
         self.packets[sequence_number] = packet_data
         self.packets_received += 1
 
         # 检查是否所有包都已接收
-        if self.packets_received % self.total_packets == 0:
+        if sequence_number == total_packets:
             # 合并所有视频包
             # 按照序列号排序视频包并合并
             sorted_packets = [self.packets[i] for i in sorted(self.packets.keys())]
             video_frame = b''.join(sorted_packets)  # 合并所有视频包的数据
 
-            # 处理合并后的完整帧
-            return self.create_frame_from_data(video_frame)
-
-        return None  # 如果包没有全部到齐，返回 None
+            sorted_packets.clear()
+            # 异步解码
+            # print(f"Decoding video frame with {len(video_frame)} bytes.")
+            # self.async_decoder.decode_async(video_frame)
+            frame = self.create_frame_from_data(video_frame)
+            # print(f"{len(frame)}")
+            return frame
+        return None
 
     def create_frame_from_data(self, video_data):
         """
@@ -51,9 +56,9 @@ class VideoPacketAssembler:
         :return: OpenCV 图像（frame）
         """
         # 将字节数据转换为 OpenCV 图像
-        # frame_array = np.frombuffer(video_data, dtype=np.uint8)
-        # frame = cv2.imdecode(frame_array, cv2.IMREAD_COLOR)
-        frame = decode_h264_with_ffmpeg(video_data)
+        frame_array = np.frombuffer(video_data, dtype=np.uint8)
+        frame = cv2.imdecode(frame_array, cv2.IMREAD_COLOR)
+        # frame = decode_h264_with_ffmpeg(video_data)
         return frame
 
 
