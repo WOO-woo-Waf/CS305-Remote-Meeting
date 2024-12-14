@@ -17,8 +17,8 @@ app.add_middleware(
 )
 
 # 核心模块实例化
-rtp_manager = RTPManager()
 websocket_manager = WebSocketManager()
+rtp_manager = RTPManager(websocket_manager)
 
 
 @app.websocket("/ws")

@@ -10,7 +10,7 @@ from network.data_router import DataRouter
 class WebSocketManager:
     def __init__(self):
         self.connection_manager = ConnectionManager()  # 使用共享的连接管理器
-        self.rtp_manager = RTPManager()  # 初始化 RTPManager
+        self.rtp_manager = RTPManager(self)  # 初始化 RTPManager
         self.data_router = DataRouter(self.connection_manager, self.rtp_manager)  # 数据路由器
         self.meeting_lifecycle_manager = MeetingLifecycleManager(self.connection_manager)  # 会议生命周期管理器
 
@@ -232,6 +232,23 @@ class WebSocketManager:
 
         # 调用 DataRouter 转发消息
         await self.data_router.route_text(meeting_id, client_id, message)
+
+    async def p2p_send_address(self, client_id, to_client_id, ip, port):
+        """处理点对点通信的地址发送"""
+        await self.send_message(client_id, {
+            "action": "P2P_ADDRESS",
+            "message": "P2P address received",
+            "ip": ip,
+            "port": port,
+            "client_id": to_client_id
+        })
+
+    async def stop_p2p(self, client_id):
+        """处理关闭点对点通信的请求"""
+        await self.send_message(client_id, {
+            "action": "STOP_P2P",
+            "message": "P2P connection stopped"
+        })
 
     async def send_message(self, client_id, message):
         """向指定客户端发送消息"""

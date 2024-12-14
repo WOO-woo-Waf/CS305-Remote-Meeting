@@ -11,3 +11,4 @@ class STUNManager:
             RTCIceServer(urls=["stun:stun.l.google.com:19302"]),
             RTCIceServer(urls=["turn:turn.server.com:3478"], username="user", credential="pass")
         ])
+#有新的方案，不用这个类了

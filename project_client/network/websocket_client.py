@@ -117,8 +117,9 @@ class WebSocketClient:
         while True:
             try:
                 ping_message = {"action": "PING"}
+                # ui.update_text(f"发送心跳: {ping_message}")
                 await self._send_message(ping_message)
-                await asyncio.sleep(60)  # 每 60 秒发送一次心跳
+                await asyncio.sleep(30)  # 每 20 秒发送一次心跳
             except Exception as e:
                 print(f"心跳发送失败: {e}，尝试重新连接...")
                 ui.update_text(f"心跳发送失败: {e}，尝试重新连接...")
@@ -211,6 +212,19 @@ class WebSocketClient:
                 message = data.get("message")
                 ui.update_text(f"[服务器响应] ERROR: {message}")
 
+            elif action == "P2P_ADDRESS":
+                # 处理 P2P 地址分配
+                to_client_id = data.get("client_id")
+                ip = data.get("ip")
+                port = data.get("port")
+                message = data.get("message")
+                ui.update_text(
+                    f"[服务器响应] P2P 地址分配: {message}, 客户端 ID: {to_client_id}, IP: {ip}, 端口: {port}")
+                self.cil.connect_to_p2p(ip, port)
+
+            elif action == "STOP_P2P":
+                self.cil.stop_p2p()
+                ui.update_text(f"[服务器响应] P2P 连接已关闭")
             else:
                 # 未知消息类型
                 ui.update_text(f"[未知消息类型] {action}: {data}")

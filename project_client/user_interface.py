@@ -31,11 +31,19 @@ class OperationInterface:
         self.create_meetings = {}
         self.rtp_client = None
         self.media_manager = None
+        self.rtp_mode = "unconnected"
+
+    def connect_to_p2p(self, ip, port):
+        self.rtp_client.connect_to_p2p(ip, port)
+
+    def stop_p2p(self):
+        self.rtp_client.stop_p2p()
 
     async def rtp_connect(self):
         self.rtp_client = RTPClient(server_ip, server_port, client_port,
                                     self.web_socket.client_id, self.conference_id, client_ip)
         await self.web_socket.register_rtp_address(client_ip, self.rtp_client.client_port, self.conference_id)
+        await asyncio.sleep(3)
         print("RTP Client connected.")
         self.media_manager = MediaManager(self.rtp_client)
         self.media_manager.start_screen_recording()
@@ -73,7 +81,6 @@ class OperationInterface:
     async def join_conference(self, conference_id):
         """加入会议"""
         print(f"正在加入会议 {conference_id}...")
-
         await self.web_socket.join_meeting(conference_id)
         await self.web_socket.send_text_message(conference_id, "Hello everyone!")
         self.on_meeting = True

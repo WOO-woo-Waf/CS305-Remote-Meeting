@@ -65,7 +65,7 @@ class RTPManager:
             cls._instance = super(RTPManager, cls).__new__(cls)
         return cls._instance
 
-    def __init__(self):
+    def __init__(self, websockets):
         """
         初始化 RTPManager，用于管理 RTP 数据包的创建、解析和转发。
         """
@@ -79,6 +79,7 @@ class RTPManager:
         self.buffer_size = 1  # 默认缓冲区大小
         self.connection_manager = ConnectionManager()  # 保持连接管理逻辑
         self.dynamic_video_frame_manager = DynamicVideoFrameManager(frame_width=960, frame_height=540)
+        self.websockets = websockets
 
         # 初始化音频播放流
         self.audio_player = pyaudio.PyAudio()
@@ -150,11 +151,11 @@ class RTPManager:
                 self.buffers[meeting_id] = {}
                 print(f"Meeting {meeting_id} initialized.")
 
-                self.register_meeting(meeting_id)  # 注册会议并启动视频帧转发任务
                 # self.start_stream_for_client(client_id, host=address[0], port=address[1]) # 相关管道发送的内容，这里并未完成
             await self.register_socket(client_id)
             self.clients[meeting_id][client_id] = address
             self.buffers[meeting_id][client_id] = []  # 初始化缓冲区
+            await self.register_meeting(meeting_id)  # 注册会议并启动视频帧转发任务
             print(f"Client {client_id} registered to meeting {meeting_id}. Current clients: {self.clients}")
 
     async def unregister_client(self, client_id, meeting_id):
@@ -174,14 +175,30 @@ class RTPManager:
                 self.dynamic_video_frame_manager.remove_client(meeting_id, client_id)
                 # self.stop_stream_for_client(client_id)
 
-    def register_meeting(self, meeting_id):
+    async def register_meeting(self, meeting_id):
         """
         注册会议并启动视频帧转发任务。
         :param meeting_id: 会议 ID
         """
-        self.dynamic_video_frame_manager.initialize_meeting(meeting_id)
-        print(f"Starting video frame forwarding task for meeting {meeting_id}.")
-        asyncio.create_task(self.send_video_to_meeting(meeting_id))
+        # print(f"length: {len(self.clients[meeting_id])}")
+        if len(self.clients[meeting_id]) == 1:
+
+            print(f"meeting {meeting_id} has 1 client.")
+        elif len(self.clients[meeting_id]) == 2:
+            print(f"Starting P2P connection for meeting {meeting_id}.")
+            clients = list(self.clients[meeting_id].keys())
+            ip1, port1 = self.clients[meeting_id][clients[0]]
+            ip2, port2 = self.clients[meeting_id][clients[1]]
+            await self.websockets.p2p_send_address(clients[0], clients[1], ip2, port2)
+            await self.websockets.p2p_send_address(clients[1], clients[0], ip1, port1)
+        else:
+            print(f"meeting {meeting_id} has {len(self.clients[meeting_id])} clients.")
+            self.dynamic_video_frame_manager.initialize_meeting(meeting_id)
+            clients = list(self.clients[meeting_id].keys())
+            for client_id in clients:
+                await self.websockets.stop_p2p(client_id)
+            print(f"Starting video frame forwarding task for meeting {meeting_id}.")
+            asyncio.create_task(self.send_video_to_meeting(meeting_id))
 
     def create_rtp_packet(self, payload_type, payload, sequence_number, total_packets):
         """
@@ -411,6 +428,8 @@ class RTPManager:
                                                 total_packets=total_packets)
             self.client_sockets[client_id].sendto(rtp_packet, client_address)
 
+        return
+
     async def send_video_to_meeting(self, meeting_id, exclude_client_id=None):
         """
         向会议中的所有客户端实时发送合成的视频帧。
@@ -426,6 +445,7 @@ class RTPManager:
             # 从 DynamicVideoFrameManager 获取最新合成帧
             frame = self.dynamic_video_frame_manager.merge_video_frames(meeting_id)
             if frame is not None:
+                # print(f"{self.clients[meeting_id]}")
                 # 将帧编码为 JPG 格式
                 _, encoded_frame = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 50])
                 frame_data = encoded_frame.tobytes()

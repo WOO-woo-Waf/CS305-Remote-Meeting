@@ -16,7 +16,7 @@ MAX_UDP_PACKET_SIZE = 65000  # 定义一个最大 UDP 数据包大小，通常�
 
 
 class RTPClient:
-    def __init__(self, server_ip, server_port, client_port, client_id, meeting_id, client_ip="0.0.0.0"):
+    def __init__(self, server_ip, server_port, client_port, client_id, meeting_id, client_ip="0.0.0.0", mode="unconnected"):
         """
         初始化 RTP 客户端。
         :param server_ip: RTP 服务器 IP
@@ -27,10 +27,13 @@ class RTPClient:
         """
         self.server_ip = server_ip
         self.server_port = server_port
+        self.p2p_ip = None
+        self.p2p_port = None
         self.client_id = client_id
         self.meeting_id = meeting_id
         self.client_ip = client_ip
         self.client_port = client_port
+        self.mode = mode
 
         # 接收缓冲区
         self.buffer = deque(maxlen=20)  # 设置缓冲区大小（可根据需求调整）
@@ -71,57 +74,13 @@ class RTPClient:
         # 自动启动视频接收
         # self.start_video_thread()
 
-    def start_receiving(self):
-        # Initialize GStreamer pipeline
-        self.capture = cv2.VideoCapture(self.pipeline, cv2.CAP_GSTREAMER)
+    def connect_to_p2p(self, ip, port):
+        self.p2p_ip = ip
+        self.p2p_port = port
+        self.mode = "p2p"
 
-    def get_frame(self):
-        if self.capture is None:
-            raise ValueError("Receiving pipeline has not been started.")
-
-        ret, frame = self.capture.read()
-        if not ret:
-            return None
-        return frame
-
-    def stop_receiving(self):
-        if self.capture is not None:
-            self.capture.release()
-            self.capture = None
-
-    def recv_play_video(self):
-        try:
-            self.start_receiving()
-            while True:
-                frame = self.get_frame()
-                if frame is None:
-                    continue
-                start_time = time.time()
-                # 设置窗口大小并显示
-                resized_frame = cv2.resize(frame, (960, 540))
-                cv2.imshow("Video Stream_client_h264", resized_frame)
-                # cv2.imshow("Video Stream", frame)
-                # 等待一段时间以确保帧率稳定
-                elapsed_time = time.time() - start_time
-                time_to_wait = max(0, self.frame_interval - elapsed_time)  # 计算剩余时间，确保帧率
-                time.sleep(time_to_wait)  # 控制帧率，确保每秒显示 target_fps 帧
-                cv2.waitKey(1)
-        finally:
-            self.stop_receiving()
-            cv2.destroyAllWindows()
-
-    def start_video_thread(self):
-        """启动视频接收线程"""
-        self.running = True
-        self.thread = threading.Thread(target=self.recv_play_video, daemon=True)
-        self.thread.start()
-
-    def stop_video_thread(self):
-        """停止视频接收线程"""
-        self.running = False
-        if self.thread is not None:
-            self.thread.join()
-            self.thread = None
+    def stop_p2p(self):
+        self.mode = "CS"
 
     # def create_rtp_packet(self, payload_type, payload):
     #     """
@@ -192,6 +151,40 @@ class RTPClient:
             payload_length & 0xFF,  # 低 8 位
             client_id_bytes,  # 客户端 ID（16 字节 UUID）
             meeting_id_bytes,  # 会议 ID（4 字节）
+            sequence_number,  # 包的序列号
+            total_packets    # 视频总包数
+        )
+
+        # 返回 RTP 数据包（头部 + 负载）
+        return header + payload
+
+    def create_rtp_packet_p2p(self, payload_type, payload, sequence_number, total_packets):
+        """
+        创建 RTP 数据包。
+        :param payload_type: 数据类型 (0x01: 视频, 0x02: 音频)
+        :param payload: 负载数据
+        :param sequence_number: 包的序列号（用于视频包的排序）
+        :param total_packets: 视频总包数（用于标记整个帧的分包数量）
+        :return: RTP 数据包
+        """
+        payload_length = len(payload)
+
+        # 使用当前时间戳（秒级）替代客户端 ID 和会议 ID
+        timestamp = int(time.time() * 1000)  # 毫秒级时间戳
+        timestamp_bytes = struct.pack('!Q', timestamp)  # 8 字节时间戳（大端序）
+
+        # 将序列号和总包数转换为字节流
+        sequence_number_bytes = struct.pack('!H', sequence_number)  # 2 字节序列号
+        total_packets_bytes = struct.pack('!H', total_packets)  # 2 字节总包数
+
+        # 创建 RTP 头部（1 字节 payload_type + 2 字节 payload_length + 2 字节 sequence_number + 2 字节 total_packets + 8 字节时间戳）
+        header = struct.pack(
+            '!BBH8sHH',  # 格式： 1 字节 (payload_type) + 2 字节 (payload_length) + 2 字节 (sequence_number) + 2 字节 (
+            # total_packets) + 8 字节时间戳
+            payload_type,  # 数据类型，视频或音频
+            (payload_length >> 8) & 0xFF,  # 高 8 位
+            payload_length & 0xFF,  # 低 8 位
+            timestamp_bytes,  # 时间戳（8 字节）
             sequence_number,  # 包的序列号
             total_packets  # 视频总包数
         )
@@ -277,8 +270,11 @@ class RTPClient:
         """
         if not self.meeting_id:
             raise ValueError("Meeting ID is not set. Please set meeting_id before sending data.")
-        packet = self.create_rtp_packet(payload_type, payload, sequence_number, total_packets)
-        self.sock.sendto(packet, (self.server_ip, self.server_port))
+        if self.mode == "p2p":
+            packet = self.create_rtp_packet_p2p(payload_type, payload, sequence_number, total_packets)
+        else:
+            packet = self.create_rtp_packet(payload_type, payload, sequence_number, total_packets)
+        self.sock.sendto(packet, (self.p2p_ip, self.p2p_port) if self.mode == "p2p" else (self.server_ip, self.server_port))
         # print(f"Sent RTP packet to {self.server_ip}:{self.server_port}")
 
     async def receive_data(self):
@@ -376,7 +372,7 @@ class RTPClient:
             # 获取当前时间戳
             start_time = time.time()
             # 设置窗口大小并显示
-            cv2.imshow(f"Video Stream_client{self.meeting_id}", frame)
+            cv2.imshow(f"Video Stream_client {self.meeting_id}", frame)
             # 等待一段时间以确保帧率稳定
             elapsed_time = time.time() - start_time
             time_to_wait = max(0, self.frame_interval - elapsed_time)  # 计算剩余时间，确保帧率
