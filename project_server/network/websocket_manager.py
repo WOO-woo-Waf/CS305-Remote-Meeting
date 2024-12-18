@@ -164,6 +164,7 @@ class WebSocketManager:
         """处理加入会议请求"""
         meeting_id = data.get("meeting_id", "UNKNOWN")
         success = self.meeting_lifecycle_manager.join_meeting(meeting_id, client_id)
+        # await self.rtp_manager.join_meeting(meeting_id, client_id)
         if success:
             await self.send_message(client_id, {
                 "action": "JOIN_MEETING_ACK",
@@ -188,6 +189,7 @@ class WebSocketManager:
             return
 
         self.meeting_lifecycle_manager.exit_meeting(meeting_id, client_id)
+        await self.rtp_manager.unregister_client(client_id, meeting_id)
         await self.send_message(client_id, {
             "action": "EXIT_MEETING_ACK",
             "meeting_id": meeting_id,

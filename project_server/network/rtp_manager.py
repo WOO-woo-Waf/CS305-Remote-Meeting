@@ -123,6 +123,9 @@ class RTPManager:
         注册客户端的socket。
         :param client_id: 客户端 ID
         """
+        if client_id in self.client_sockets:
+            print(f"Client {client_id} socket already registered.")
+            return
         self.client_sockets[client_id] = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         while True:
             try:
@@ -136,6 +139,18 @@ class RTPManager:
                 self.start_port += 1
         client_address = self.client_sockets[client_id].getsockname()
         print(f"Client {client_id} socket registered at {client_address}.")
+
+    async def join_meeting(self, meeting_id, client_id):
+        async with self.lock:
+            # 初始化会议和客户端信息
+            if meeting_id not in self.clients:
+                self.clients[meeting_id] = {}
+                print(f"Meeting {meeting_id} initialized.")
+                # self.start_stream_for_client(client_id, host=address[0], port=address[1]) # 相关管道发送的内容，这里并未完成
+            await self.register_socket(client_id)
+            self.clients[meeting_id][client_id] = self.client_sockets[client_id].getsockname()
+            await self.register_meeting(meeting_id)  # 注册会议并启动视频帧转发任务
+            print(f"Client {client_id} joined meeting {meeting_id}. Current clients: {self.clients}")
 
     async def register_client(self, meeting_id, client_id, address):
         """
@@ -182,7 +197,6 @@ class RTPManager:
         """
         # print(f"length: {len(self.clients[meeting_id])}")
         if len(self.clients[meeting_id]) == 1:
-
             print(f"meeting {meeting_id} has 1 client.")
         elif len(self.clients[meeting_id]) == 2:
             print(f"Starting P2P connection for meeting {meeting_id}.")
@@ -370,7 +384,6 @@ class RTPManager:
             # time.sleep(time_to_wait)  # 控制帧率，确保每秒显示 target_fps 帧
             # cv2.waitKey(1)
 
-
     def play_audio(self, client_id, meeting_id, audio_payload):
         """
         播放音频数据。
@@ -442,6 +455,19 @@ class RTPManager:
                 return
 
         while True:
+            async with self.lock:
+                if len(self.clients[meeting_id]) == 2:
+                    print(f"Starting P2P connection for meeting {meeting_id}.")
+                    clients = list(self.clients[meeting_id].keys())
+                    ip1, port1 = self.clients[meeting_id][clients[0]]
+                    ip2, port2 = self.clients[meeting_id][clients[1]]
+                    await self.websockets.p2p_send_address(clients[0], clients[1], ip2, port2)
+                    await self.websockets.p2p_send_address(clients[1], clients[0], ip1, port1)
+                    break
+                elif len(self.clients[meeting_id]) < 2:
+                    print(f"Meeting {meeting_id} has less than 2 clients.")
+                    break
+
             # 从 DynamicVideoFrameManager 获取最新合成帧
             frame = self.dynamic_video_frame_manager.merge_video_frames(meeting_id)
             if frame is not None:

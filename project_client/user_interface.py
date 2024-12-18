@@ -43,7 +43,6 @@ class OperationInterface:
         self.rtp_client = RTPClient(server_ip, server_port, client_port,
                                     self.web_socket.client_id, self.conference_id, client_ip)
         await self.web_socket.register_rtp_address(client_ip, self.rtp_client.client_port, self.conference_id)
-        await asyncio.sleep(3)
         print("RTP Client connected.")
         self.media_manager = MediaManager(self.rtp_client)
         self.media_manager.start_screen_recording()
@@ -90,6 +89,8 @@ class OperationInterface:
         # self.start_ui()
         if not self.rtp_client:
             await self.rtp_connect()
+        else:
+            await self.web_socket.register_rtp_address(client_ip, self.rtp_client.client_port, self.conference_id)
 
     async def quit_conference(self):
         """退出会议"""

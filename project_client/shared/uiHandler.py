@@ -50,23 +50,23 @@ class UIHandler:
         self.text_area = ScrolledText(text_frame, wrap=tk.WORD, height=10)
         self.text_area.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
-        # 中部分：视频展示区域
-        video_frame = tk.Frame(self.root, bg="black", height=250)
-        video_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
-
-        tk.Label(video_frame, text="视频信息", bg="black", fg="white").pack(anchor=tk.NW, padx=5, pady=2)
-        self.video_frame = tk.Label(video_frame, text="视频帧区域\n(接口留空待实现)", bg="gray", fg="white", width=100,
-                                    height=10)
-        self.video_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-
-        # 下部分：音频信息展示
-        audio_frame = tk.Frame(self.root)
-        audio_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
-
-        tk.Label(audio_frame, text="音频信息").pack(anchor=tk.W, padx=5, pady=2)
-        self.audio_info = tk.Label(audio_frame, text="音频状态：无音频\n(接口留空待实现)", bg="white", fg="black",
-                                   width=80, height=5)
-        self.audio_info.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        # # 中部分：视频展示区域
+        # video_frame = tk.Frame(self.root, bg="black", height=250)
+        # video_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+        #
+        # tk.Label(video_frame, text="视频信息", bg="black", fg="white").pack(anchor=tk.NW, padx=5, pady=2)
+        # self.video_frame = tk.Label(video_frame, text="视频帧区域\n(接口留空待实现)", bg="gray", fg="white", width=100,
+        #                             height=10)
+        # self.video_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        #
+        # # 下部分：音频信息展示
+        # audio_frame = tk.Frame(self.root)
+        # audio_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+        #
+        # tk.Label(audio_frame, text="音频信息").pack(anchor=tk.W, padx=5, pady=2)
+        # self.audio_info = tk.Label(audio_frame, text="音频状态：无音频\n(接口留空待实现)", bg="white", fg="black",
+        #                            width=80, height=5)
+        # self.audio_info.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
     # --- 以下为接口方法，用于更新展示内容 ---
 
