@@ -163,14 +163,29 @@ class WebSocketManager:
     async def join_meeting(self, client_id, data):
         """处理加入会议请求"""
         meeting_id = data.get("meeting_id", "UNKNOWN")
-        success = self.meeting_lifecycle_manager.join_meeting(meeting_id, client_id)
+        text = self.meeting_lifecycle_manager.join_meeting(meeting_id, client_id)
         # await self.rtp_manager.join_meeting(meeting_id, client_id)
-        if success:
+        if text == "SUCCESS":
             await self.send_message(client_id, {
                 "action": "JOIN_MEETING_ACK",
                 "meeting_id": meeting_id,
                 "participants": self.connection_manager.get_participants(meeting_id),
                 "message": "Joined meeting successfully"
+            })
+        elif text == "ALREADY_IN_MEETING":
+            await self.send_message(client_id, {
+                "action": "ERROR",
+                "message": "You are already in the meeting"
+            })
+        elif text == "ALREADY_IN_OTHER_MEETING":
+            await self.send_message(client_id, {
+                "action": "ERROR",
+                "message": "You are already in another meeting"
+            })
+        elif text == "MEETING_NOT_FOUND":
+            await self.send_message(client_id, {
+                "action": "ERROR",
+                "message": f"Meeting {meeting_id} not found"
             })
         else:
             await self.send_message(client_id, {

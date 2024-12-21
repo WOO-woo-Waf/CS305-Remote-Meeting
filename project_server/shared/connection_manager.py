@@ -51,17 +51,16 @@ class ConnectionManager:
     def add_participant(self, meeting_id, client_id):
         """加入会议"""
         if meeting_id not in self.meetings:
-            return False
-
+            return "MEETING_NOT_FOUND"
         if client_id in self.meetings[meeting_id]["participants"]:
-            return True  # 已经在会议中
+            return "ALREADY_IN_MEETING"
         if client_id in self.user_meeting_map:
             current_meeting = self.user_meeting_map[client_id]
             if current_meeting != meeting_id:
-                self.remove_participant(current_meeting, client_id)
+                return "ALREADY_IN_OTHER_MEETING"
         self.meetings[meeting_id]["participants"].append(client_id)
         self.user_meeting_map[client_id] = meeting_id  # 更新用户当前会议映射
-        return True
+        return "SUCCESS"
 
     def remove_participant(self, meeting_id, client_id):
         """移除参与者"""

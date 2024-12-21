@@ -26,11 +26,8 @@ class MeetingLifecycleManager:
         :param client_id: 客户端 ID
         :return: 成功返回 True，否则返回 False
         """
-        if self.connection_manager.add_participant(meeting_id, client_id):
-            print(f"Client {client_id} joined meeting {meeting_id}")
-            return True
-        print(f"Failed to join meeting {meeting_id} for client {client_id}")
-        return False
+        text = self.connection_manager.add_participant(meeting_id, client_id)
+        return text
 
     def exit_meeting(self, meeting_id, client_id):
         """
