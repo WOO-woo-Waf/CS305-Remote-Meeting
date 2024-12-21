@@ -558,4 +558,5 @@ class RTPProtocol(asyncio.DatagramProtocol):
             asyncio.create_task(self.rtp_manager.play_video(client_id, meeting_id,
                                                             payload, sequence_number, total_packets))
         elif payload_type == 0x02:  # 音频类型
-            asyncio.create_task(self.rtp_manager.send_audio_to_meeting(meeting_id, payload))
+            if len(self.rtp_manager.clients[meeting_id]) > 2:
+                asyncio.create_task(self.rtp_manager.send_audio_to_meeting(meeting_id, payload))

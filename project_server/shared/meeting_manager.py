@@ -48,11 +48,12 @@ class MeetingLifecycleManager:
         :param creator_id: 创建者客户端 ID
         :return: 成功返回 True，否则返回 False
         """
-        if self.connection_manager.cancel_meeting(meeting_id, creator_id):
+        participants = self.connection_manager.get_participants(meeting_id)
+        if participants:
             print(f"Meeting {meeting_id} canceled by {creator_id}")
-            return True
+            return participants
         print(f"Failed to cancel meeting {meeting_id} by {creator_id}")
-        return False
+        return None
 
     def get_meeting_status(self, meeting_id):
         """

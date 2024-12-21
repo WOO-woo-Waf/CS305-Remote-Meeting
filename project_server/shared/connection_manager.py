@@ -81,8 +81,8 @@ class ConnectionManager:
                 if client_id in self.user_meeting_map:
                     del self.user_meeting_map[client_id]
             del self.meetings[meeting_id]
-            return True
-        return False
+            return participants
+        return None
 
     def get_participants(self, meeting_id):
         """获取会议中的参与者列表"""

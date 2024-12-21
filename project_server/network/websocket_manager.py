@@ -119,17 +119,17 @@ class WebSocketManager:
                     "message": f"RTP address registered: {rtp_ip}:{rtp_port}"
                 })
 
-            elif action == "SEND_AUDIO":
-                # 音频流的路由 (通过 RTP)
-                meeting_id = data.get("meeting_id")
-                audio_data = data.get("audio_data")  # 音频数据（需要以 RTP 方式接收）
-                await self.data_router.route_audio(meeting_id, client_id, audio_data)
-
-            elif action == "SEND_VIDEO":
-                # 视频流的路由 (通过 RTP)
-                meeting_id = data.get("meeting_id")
-                video_data = data.get("video_data")  # 视频数据（需要以 RTP 方式接收）
-                await self.data_router.route_video(meeting_id, client_id, video_data)
+            # elif action == "SEND_AUDIO":
+            #     # 音频流的路由 (通过 RTP)
+            #     meeting_id = data.get("meeting_id")
+            #     audio_data = data.get("audio_data")  # 音频数据（需要以 RTP 方式接收）
+            #     await self.data_router.route_audio(meeting_id, client_id, audio_data)
+            #
+            # elif action == "SEND_VIDEO":
+            #     # 视频流的路由 (通过 RTP)
+            #     meeting_id = data.get("meeting_id")
+            #     video_data = data.get("video_data")  # 视频数据（需要以 RTP 方式接收）
+            #     await self.data_router.route_video(meeting_id, client_id, video_data)
 
             elif action == "SEND_MESSAGE":
                 # 处理客户端发送的聊天信息
@@ -206,15 +206,21 @@ class WebSocketManager:
             })
             return
 
-        success = self.meeting_lifecycle_manager.cancel_meeting(meeting_id, client_id)
-        if success:
-            participants = self.connection_manager.get_participants(meeting_id)
+        participants = self.meeting_lifecycle_manager.cancel_meeting(meeting_id, client_id)
+        if participants:
             for participant_id in participants:
+                await self.rtp_manager.unregister_client(participant_id, meeting_id)
                 await self.send_message(participant_id, {
                     "action": "MEETING_CANCELED",
                     "meeting_id": meeting_id,
-                    "message": "Meeting has been canceled"
+                    "message": "Meeting has been canceled by the creator"
                 })
+            await self.rtp_manager.unregister_client(client_id, meeting_id)
+            await self.send_message(client_id, {
+                "action": "MEETING_CANCELED",
+                "meeting_id": meeting_id,
+                "message": "Meeting has been canceled successfully"
+            })
         else:
             await self.send_message(client_id, {
                 "action": "ERROR",
