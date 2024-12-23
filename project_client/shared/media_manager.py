@@ -158,15 +158,24 @@ class MediaManager:
         如果有视频和屏幕数据，则合成后发送；否则分别发送。
         """
         if video_data and screen_data:
-            # 解码图像数据
             video_frame = cv2.imdecode(np.frombuffer(video_data, dtype=np.uint8), cv2.IMREAD_COLOR)
             screen_frame = cv2.imdecode(np.frombuffer(screen_data, dtype=np.uint8), cv2.IMREAD_COLOR)
 
             # 调整屏幕帧大小与视频帧一致
-            screen_frame = cv2.resize(screen_frame, (video_frame.shape[1], video_frame.shape[0]))
+            screen_frame = cv2.resize(screen_frame, (1280, 720))  # 设置屏幕录制分辨率为 1280x720
 
-            # 合成图像（简单叠加）
-            combined_frame = cv2.addWeighted(video_frame, 0.7, screen_frame, 0.3, 0)
+            # 缩小摄像头内容
+            small_frame_height = 160  # 缩小摄像头画面的高度
+            small_frame_width = 160   # 缩小摄像头画面的宽度
+            small_frame = cv2.resize(video_frame, (small_frame_width, small_frame_height))
+
+            # 定义摄像头画面放置位置（右下角）
+            x_offset = screen_frame.shape[1] - small_frame_width - 20  # 距离右边和下边各 20 像素
+            y_offset = screen_frame.shape[0] - small_frame_height - 20
+
+            # 将小画面嵌入屏幕录制内容中
+            combined_frame = screen_frame.copy()
+            combined_frame[y_offset:y_offset + small_frame_height, x_offset:x_offset + small_frame_width] = small_frame
 
             # 压缩合成后的图像
             _, combined_buffer = cv2.imencode(".jpg", combined_frame)
