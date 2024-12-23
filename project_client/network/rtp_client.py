@@ -61,7 +61,7 @@ class RTPClient:
         print(f"RTP Client initialized with IP {self.client_ip} and port {self.client_port}")
         # ui.update_text(f"RTP Client initialized with IP {self.client_ip} and port {self.client_port}")
         self.video_assemblers = None  # 视频包组装器
-        self.frame_interval = 1 / 60  # 视频帧之间的时间间隔（30 FPS）
+        # self.frame_interval = 1 / 60  # 视频帧之间的时间间隔（30 FPS）
         asyncio.create_task(self.receive_data())  # 开启接收任务
         self.pipeline = (
             f"udpsrc port={self.server_port} ! application/x-rtp, payload=96 ! rtph264depay ! avdec_h264 "
@@ -386,12 +386,12 @@ class RTPClient:
                 return
 
             # 控制帧率
-            elapsed_time = time.time() - start_time
-            if elapsed_time < self.frame_interval:
-                time_to_wait = self.frame_interval - elapsed_time
-            else:
-                time_to_wait = 0
-            time.sleep(time_to_wait)
+            # elapsed_time = time.time() - start_time
+            # if elapsed_time < self.frame_interval:
+            #     time_to_wait = self.frame_interval - elapsed_time
+            # else:
+            #     time_to_wait = 0
+            # time.sleep(time_to_wait)
 
 
 

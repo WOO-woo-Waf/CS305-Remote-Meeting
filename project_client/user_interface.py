@@ -5,10 +5,10 @@ from network.rtp_client import RTPClient
 from shared.uiHandler import UIHandler
 from shared.media_manager import MediaManager
 
-server_ip = "10.16.180.184"
+server_ip = "10.32.118.226"
 server_port = 5555
 
-client_ip = "10.16.180.184"
+client_ip = "10.32.118.226"
 client_port = 5001
 
 
@@ -24,7 +24,7 @@ class OperationInterface:
         self.status = "空闲"  # 当前状态
         self.conference_id = None  # 当前会议 ID
         self.on_meeting = False  # 是否正在会议中
-        self.shared_data = {}  # 存储共享状态（如屏幕、摄像头）
+        self.shared_data = {"screen": False, "camera": True, "audio": True}  # 共享数据状态
         ui_start_event = threading.Event()
         self.ui_handler = UIHandler(ui_start_event)  # UI 窗口线程的处理对象
         self.web_socket = websocket  # WebSocket 连接
@@ -45,7 +45,8 @@ class OperationInterface:
         await self.web_socket.register_rtp_address(client_ip, self.rtp_client.client_port, self.conference_id)
         print("RTP Client connected.")
         self.media_manager = MediaManager(self.rtp_client)
-        self.media_manager.start_screen_recording()
+        # self.media_manager.start_screen_recording()
+        self.media_manager.start_camera()
         self.media_manager.start_microphone()
 
     def display_help(self):
@@ -85,6 +86,7 @@ class OperationInterface:
         self.on_meeting = True
         self.conference_id = conference_id
         self.status = f"会议中-{self.conference_id}"
+        print(f"成功加入会议 {conference_id}")
         # self.start_ui()
         if not self.rtp_client:
             await self.rtp_connect()
@@ -145,6 +147,8 @@ class OperationInterface:
             # 创建一个线程运行 UI 界面
             ui_thread = threading.Thread(target=self.ui_handler.run_ui, daemon=True)
             ui_thread.start()
+        else:
+            print("UI 界面已启动。")
 
     async def start_interface(self):
         """启动命令行界面主循环"""

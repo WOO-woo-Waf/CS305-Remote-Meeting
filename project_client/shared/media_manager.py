@@ -21,7 +21,7 @@ class MediaManager:
             cls._instance = super(MediaManager, cls).__new__(cls)
         return cls._instance
 
-    def __init__(self, rtp_client, target_fps=60):
+    def __init__(self, rtp_client, target_fps=24):
         """
         初始化媒体管理器，负责管理摄像头、麦克风和屏幕录制。
         :param rtp_client: RTP 客户端实例，用于发送音视频数据
@@ -52,14 +52,13 @@ class MediaManager:
                     break
 
                 # 压缩视频帧
-                _, buffer = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
+                _, buffer = cv2.imencode(".jpg", frame)
                 video_data = buffer.tobytes()
                 self.process_and_send(video_data=video_data)
 
                 # 计算本次处理的时间
                 elapsed_time = time.time() - start_time
                 # 计算剩余时间，确保帧率稳定
-                # time_to_wait = max(0, frame_interval - elapsed_time)
                 if frame_interval - elapsed_time > 0:
                     time_to_wait = frame_interval - elapsed_time
                 else:
@@ -131,7 +130,7 @@ class MediaManager:
                 frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
 
                 # 压缩图像为 JPEG 格式
-                _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
+                _, buffer = cv2.imencode('.jpg', frame)
                 screen_data = buffer.tobytes()
                 self.process_and_send(screen_data=screen_data)
 
@@ -170,7 +169,7 @@ class MediaManager:
             combined_frame = cv2.addWeighted(video_frame, 0.7, screen_frame, 0.3, 0)
 
             # 压缩合成后的图像
-            _, combined_buffer = cv2.imencode(".jpg", combined_frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
+            _, combined_buffer = cv2.imencode(".jpg", combined_frame)
             asyncio.run(self.rtp_client.send_video(combined_buffer.tobytes()))
 
         elif video_data:
