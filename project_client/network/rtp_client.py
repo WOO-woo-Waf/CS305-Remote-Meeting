@@ -10,9 +10,13 @@ import threading
 import numpy as np
 from collections import deque
 
-from project_client.shared.Video_packet_assembler import VideoPacketAssembler
+from shared.Video_packet_assembler import VideoPacketAssembler
+from shared.media_manager import MediaManager
+from shared.audio_player import AudioPlayer
 
 MAX_UDP_PACKET_SIZE = 65000  # 定义一个最大 UDP 数据包大小，通常是 65535 字节
+
+media_manager = MediaManager(None)
 
 
 class RTPClient:
@@ -31,8 +35,6 @@ class RTPClient:
         self.p2p_port = None
         self.client_id = client_id
         self.meeting_id = meeting_id
-        self.client_ip = client_ip
-        self.client_port = client_port
         self.mode = mode
 
         # 接收缓冲区
@@ -59,9 +61,8 @@ class RTPClient:
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 8 * 1024 * 1024)  # 增加发送缓冲区
 
         print(f"RTP Client initialized with IP {self.client_ip} and port {self.client_port}")
-        # ui.update_text(f"RTP Client initialized with IP {self.client_ip} and port {self.client_port}")
         self.video_assemblers = None  # 视频包组装器
-        # self.frame_interval = 1 / 60  # 视频帧之间的时间间隔（30 FPS）
+        self.frame_interval = 1 / 30  # 视频帧之间的时间间隔（30 FPS）
         asyncio.create_task(self.receive_data())  # 开启接收任务
         self.pipeline = (
             f"udpsrc port={self.server_port} ! application/x-rtp, payload=96 ! rtph264depay ! avdec_h264 "
@@ -70,6 +71,8 @@ class RTPClient:
         self.capture = None
         self.running = False
         self.thread = None  # 用于接收和播放视频的线程
+
+        self.audio_player = AudioPlayer()
 
         # 自动启动视频接收
         # self.start_video_thread()
@@ -141,10 +144,14 @@ class RTPClient:
         sequence_number_bytes = struct.pack('!H', sequence_number)  # 2 字节序列号
         total_packets_bytes = struct.pack('!H', total_packets)  # 2 字节总包数
 
+        # 使用当前时间戳（秒级）替代客户端 ID 和会议 ID
+        timestamp = int(time.time() * 1000)  # 毫秒级时间戳
+        timestamp_bytes = struct.pack('!Q', timestamp)  # 8 字节时间戳（大端序）
+
         # 创建 RTP 头部（1 字节 payload_type + 2 字节 payload_length + 2 字节 sequence_number + 2 字节 total_packets + 16 字节
         # client_id + 4 字节 meeting_id）
         header = struct.pack(
-            '!BBH16s4sHH',  # 格式： 1 字节 (payload_type) + 2 字节 (payload_length) + 2 字节 (sequence_number) + 2 字节 (
+            '!BBH16s4sHH8s',  # 格式： 1 字节 (payload_type) + 2 字节 (payload_length) + 2 字节 (sequence_number) + 2 字节 (
             # total_packets) + 16 字节 UUID + 4 字节 meeting_id
             payload_type,  # 数据类型，视频或音频
             (payload_length >> 8) & 0xFF,  # 高 8 位
@@ -152,7 +159,8 @@ class RTPClient:
             client_id_bytes,  # 客户端 ID（16 字节 UUID）
             meeting_id_bytes,  # 会议 ID（4 字节）
             sequence_number,  # 包的序列号
-            total_packets    # 视频总包数
+            total_packets,    # 视频总包数
+            timestamp_bytes  # 时间戳（8 字节）
         )
 
         # 返回 RTP 数据包（头部 + 负载）
@@ -169,6 +177,11 @@ class RTPClient:
         """
         payload_length = len(payload)
 
+        # 确保 self.client_id 是一个有效的 UUID 字符串
+        client_id_bytes = uuid.UUID(self.client_id).bytes  # 转换为 16 字节的字节流
+        if len(client_id_bytes) != 16:
+            raise ValueError("client_id should be a valid UUID")
+
         # 使用当前时间戳（秒级）替代客户端 ID 和会议 ID
         timestamp = int(time.time() * 1000)  # 毫秒级时间戳
         timestamp_bytes = struct.pack('!Q', timestamp)  # 8 字节时间戳（大端序）
@@ -179,14 +192,15 @@ class RTPClient:
 
         # 创建 RTP 头部（1 字节 payload_type + 2 字节 payload_length + 2 字节 sequence_number + 2 字节 total_packets + 8 字节时间戳）
         header = struct.pack(
-            '!BBH8sHH',  # 格式： 1 字节 (payload_type) + 2 字节 (payload_length) + 2 字节 (sequence_number) + 2 字节 (
+            '!BBH8sHH16s',  # 格式： 1 字节 (payload_type) + 2 字节 (payload_length) + 2 字节 (sequence_number) + 2 字节 (
             # total_packets) + 8 字节时间戳
             payload_type,  # 数据类型，视频或音频
             (payload_length >> 8) & 0xFF,  # 高 8 位
             payload_length & 0xFF,  # 低 8 位
             timestamp_bytes,  # 时间戳（8 字节）
             sequence_number,  # 包的序列号
-            total_packets  # 视频总包数
+            total_packets,  # 视频总包数
+            client_id_bytes  # 客户端 ID（16 字节 UUID）
         )
 
         # 返回 RTP 数据包（头部 + 负载）
@@ -199,7 +213,7 @@ class RTPClient:
         :return: 包含头部信息和负载数据的字典
         """
         # RTP 头部格式：1 字节 payload_type + 2 字节 payload_length + 8 字节时间戳 + 2 字节 sequence_number + 2 字节 total_packets
-        header_format = '!BBH8sHH'
+        header_format = '!BBH8sHH16s'
         header_size = struct.calcsize(header_format)
 
         if len(packet) < header_size:
@@ -209,8 +223,11 @@ class RTPClient:
         header = packet[:header_size]
         payload = packet[header_size:]
 
-        payload_type, high_length, low_length, timestamp_bytes, sequence_number, total_packets = struct.unpack(
+        payload_type, high_length, low_length, timestamp_bytes, sequence_number, total_packets, client_id_bytes = struct.unpack(
             header_format, header)
+
+        # 将 client_id 转换为 UUID 字符串
+        client_id = str(uuid.UUID(bytes=client_id_bytes))
 
         # 计算负载长度
         payload_length = (high_length << 8) | low_length
@@ -220,7 +237,6 @@ class RTPClient:
 
         # 解析时间戳
         timestamp = struct.unpack('!Q', timestamp_bytes)[0]
-
         # 返回解析结果
         return {
             "payload_type": payload_type,
@@ -228,7 +244,8 @@ class RTPClient:
             "timestamp": timestamp,
             "sequence_number": sequence_number,
             "total_packets": total_packets,
-            "payload": payload
+            "payload": payload,
+            "client_id": client_id
         }
 
     async def send_video(self, video_payload):
@@ -293,13 +310,14 @@ class RTPClient:
                 payload = data_["payload"]
                 sequence_number = data_["sequence_number"]
                 total_packets = data_["total_packets"]
+                client_id = data_["client_id"]
 
                 # 根据负载类型来播放数据
                 if payload_type == 0x01:  # 视频类型
                     await asyncio.create_task(self.play_video(payload, sequence_number, total_packets))
                 elif payload_type == 0x02:  # 音频类型
                     # print("Playing audio...")
-                    self.play_audio(data_["payload"])
+                    self.play_audio(data_["payload"], client_id)
 
             except BlockingIOError:
                 await asyncio.sleep(0.01)
@@ -344,12 +362,12 @@ class RTPClient:
         """
         self.meeting_id = meeting_id
 
-    def play_audio(self, audio_payload):
+    def play_audio(self, audio_payload, client_id):
         """
         播放音频数据。
         :param audio_payload: 音频数据
         """
-        self.audio_stream.write(audio_payload)
+        self.audio_player.add_audio(client_id, audio_payload)
 
     async def play_video(self, video_payload, sequence_number, total_packets):
         """
@@ -366,9 +384,7 @@ class RTPClient:
         # 将视频包添加到组装器中
         frame = self.video_assemblers.add_packet(video_payload, sequence_number, total_packets)
 
-        # 如果合并成功，播放视频
         if frame is not None:
-            # print("Playing video...")
             # 获取当前时间戳
             start_time = time.time()
 
@@ -386,12 +402,13 @@ class RTPClient:
                 return
 
             # 控制帧率
-            # elapsed_time = time.time() - start_time
-            # if elapsed_time < self.frame_interval:
-            #     time_to_wait = self.frame_interval - elapsed_time
-            # else:
-            #     time_to_wait = 0
-            # time.sleep(time_to_wait)
+            elapsed_time = time.time() - start_time
+            time_to_wait = max(0, self.frame_interval - elapsed_time)  # 计算剩余时间，确保帧率
+            time.sleep(time_to_wait)
+            # if not media_manager.display_running:
+            #     media_manager.start_video_display()
+            # media_manager.frame_queue.append(frame)
+
 
 
 
