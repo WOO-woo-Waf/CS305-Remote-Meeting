@@ -317,7 +317,7 @@ class RTPClient:
                     await asyncio.create_task(self.play_video(payload, sequence_number, total_packets))
                 elif payload_type == 0x02:  # 音频类型
                     # print("Playing audio...")
-                    self.play_audio(data_["payload"], client_id)
+                    await self.play_audio(data_["payload"], client_id)
 
             except BlockingIOError:
                 await asyncio.sleep(0.01)
@@ -362,12 +362,12 @@ class RTPClient:
         """
         self.meeting_id = meeting_id
 
-    def play_audio(self, audio_payload, client_id):
+    async def play_audio(self, audio_payload, client_id):
         """
         播放音频数据。
         :param audio_payload: 音频数据
         """
-        self.audio_player.add_audio(client_id, audio_payload)
+        await self.audio_player.add_audio(client_id, audio_payload)
 
     async def play_video(self, video_payload, sequence_number, total_packets):
         """
