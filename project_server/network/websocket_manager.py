@@ -205,6 +205,10 @@ class WebSocketManager:
 
         self.meeting_lifecycle_manager.exit_meeting(meeting_id, client_id)
         await self.rtp_manager.unregister_client(client_id, meeting_id)
+        if len(self.connection_manager.get_participants(meeting_id)) == 1:
+            await self.stop_p2p(client_id)
+            await self.stop_p2p(self.connection_manager.get_participants(meeting_id)[0])
+
         await self.send_message(client_id, {
             "action": "EXIT_MEETING_ACK",
             "meeting_id": meeting_id,

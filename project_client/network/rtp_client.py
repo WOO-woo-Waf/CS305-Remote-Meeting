@@ -11,10 +11,11 @@ import numpy as np
 from collections import deque
 
 from project_client.shared.Video_packet_assembler import VideoPacketAssembler
+from project_client.shared.media_manager import MediaManager
 
 MAX_UDP_PACKET_SIZE = 65000  # 定义一个最大 UDP 数据包大小，通常是 65535 字节
 
-
+media_manager = MediaManager(None)
 class RTPClient:
     def __init__(self, server_ip, server_port, client_port, client_id, meeting_id, client_ip="0.0.0.0", mode="unconnected"):
         """
@@ -366,20 +367,32 @@ class RTPClient:
         # 将视频包添加到组装器中
         frame = self.video_assemblers.add_packet(video_payload, sequence_number, total_packets)
 
-        # 如果合并成功，播放视频
         if frame is not None:
-            # print("Playing video...")
             # 获取当前时间戳
             start_time = time.time()
-            # 设置窗口大小并显示
-            cv2.imshow(f"Video Stream_client {self.meeting_id}", frame)
-            # 等待一段时间以确保帧率稳定
+
+            # 调整帧的大小
+            resized_frame = cv2.resize(frame, (960, 540))
+
+            # 使用 cv2.imshow 显示帧
+            cv2.imshow(f"Video Stream_client {self.meeting_id} {self.client_port}", resized_frame)
+
+            # 等待按键事件并设置适当的退出条件
+            key = cv2.waitKey(1)
+            if key == ord('q'):  # 如果按下 'q' 键退出
+                print("Exiting video stream...")
+                cv2.destroyAllWindows()
+                return
+
+            # 控制帧率
             elapsed_time = time.time() - start_time
             time_to_wait = max(0, self.frame_interval - elapsed_time)  # 计算剩余时间，确保帧率
-            time.sleep(time_to_wait)  # 控制帧率，确保每秒显示 target_fps 帧
-            cv2.waitKey(1)
-        # else:
-        #     print(f"Received video packet {sequence_number}/{total_packets}")
+            time.sleep(time_to_wait)
+            # if not media_manager.display_running:
+            #     media_manager.start_video_display()
+            # media_manager.frame_queue.append(frame)
+
+
 
 
 

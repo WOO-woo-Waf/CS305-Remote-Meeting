@@ -1,7 +1,3 @@
-# 音视频采集和播放模块，负责操作摄像头和麦克风。
-import asyncio
-import time
-
 import cv2
 import ffmpeg
 import pyaudio
@@ -9,6 +5,8 @@ import threading
 import pyautogui
 from PIL import Image
 import numpy as np
+import asyncio
+import time
 
 
 class MediaManager:
@@ -25,34 +23,52 @@ class MediaManager:
         :param rtp_client: RTP 客户端实例，用于发送音视频数据
         """
         self.rtp_client = rtp_client
-        self.running = False  # 控制线程状态
+        self.camera_running = False
+        self.microphone_running = False
+        self.screen_running = False
+        self.display_running = False
         self.target_fps = target_fps
+        self.frame_interval = 1 / target_fps
+        self.frame_queue = []  # 用于存储待显示的帧
 
     def start_camera(self):
         """
         打开摄像头，捕获视频帧并发送。
         """
         cap = cv2.VideoCapture(0)
-        self.running = True
+        self.camera_running = True
+        frame_interval = 1 / self.target_fps
 
         def capture_video():
-            while self.running:
+            while self.camera_running:
+                start_time = time.time()  # 记录当前时间
                 ret, frame = cap.read()
                 if not ret:
                     print("Failed to capture video frame.")
                     break
 
                 # 压缩视频帧
-                _, buffer = cv2.imencode(".jpg", frame)
+                _, buffer = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
                 video_data = buffer.tobytes()
+                self.process_and_send(video_data=video_data)
 
-                # 发送视频帧
-                self.rtp_client.send_video(video_data)
+                # 计算本次处理的时间
+                elapsed_time = time.time() - start_time
+                # 计算剩余时间，确保帧率稳定
+                time_to_wait = max(0, frame_interval - elapsed_time)
+                time.sleep(time_to_wait)  # 休眠，等待合适的时间间隔
 
             cap.release()
 
         threading.Thread(target=capture_video, daemon=True).start()
         print("Camera started.")
+
+    def stop_camera(self):
+        """
+        停止摄像头捕获。
+        """
+        self.camera_running = False
+        print("Camera stopped.")
 
     def start_microphone(self):
         """
@@ -60,13 +76,13 @@ class MediaManager:
         """
         audio = pyaudio.PyAudio()
         stream = audio.open(format=pyaudio.paInt16, channels=1, rate=44100, input=True, frames_per_buffer=1024)
-        self.running = True
+        self.microphone_running = True
 
         def capture_audio():
-            while self.running:
+            while self.microphone_running:
                 try:
                     audio_data = stream.read(1024, exception_on_overflow=False)
-                    asyncio.run(self.rtp_client.send_audio(audio_data))
+                    self.process_and_send(audio_data=audio_data)
                 except Exception as e:
                     print("Error capturing audio:", e)
 
@@ -77,17 +93,23 @@ class MediaManager:
         threading.Thread(target=capture_audio, daemon=True).start()
         print("Microphone started.")
 
+    def stop_microphone(self):
+        """
+        停止麦克风捕获。
+        """
+        self.microphone_running = False
+        print("Microphone stopped.")
+
     def start_screen_recording(self):
         """
         开始屏幕录制，捕获屏幕图像并发送。
         """
-        self.running = True
-        screen_size = pyautogui.size()
+        self.screen_running = True
         # 计算每帧的时间间隔（秒）
         frame_interval = 1 / self.target_fps
 
         def capture_screen():
-            while self.running:
+            while self.screen_running:
                 start_time = time.time()  # 记录当前时间
                 # 截取屏幕
                 screen = pyautogui.screenshot()
@@ -95,19 +117,16 @@ class MediaManager:
                     print("Failed to capture screen.")
                     continue
 
-                # print(screen)
                 # 将 PIL 图像转换为 numpy 数组
                 frame = np.array(screen)
                 # 转换颜色格式（PIL 默认是 RGB，OpenCV 需要 BGR）
                 frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
 
                 # 压缩图像为 JPEG 格式
-                _, buffer = cv2.imencode('.jpg', frame)
-                # _, buffer = cv2.imencode('.png', frame)
+                _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
                 screen_data = buffer.tobytes()
-                # screen_data = process_frame(frame)
-                # 使用 asyncio.ensure_future 调度 send_video
-                asyncio.run(self.rtp_client.send_video(screen_data))
+                self.process_and_send(screen_data=screen_data)
+
                 # 计算本次处理的时间
                 elapsed_time = time.time() - start_time
                 # 计算剩余时间，确保帧率稳定
@@ -117,46 +136,89 @@ class MediaManager:
         threading.Thread(target=capture_screen, daemon=True).start()
         print("Screen recording started.")
 
-    def stop(self):
+    def stop_screen_recording(self):
+        """
+        停止屏幕录制。
+        """
+        self.screen_running = False
+        print("Screen recording stopped.")
+
+    def process_and_send(self, video_data=None, screen_data=None, audio_data=None):
+        """
+        处理和发送捕获的数据。
+        如果有视频和屏幕数据，则合成后发送；否则分别发送。
+        """
+        if video_data and screen_data:
+            # 解码图像数据
+            video_frame = cv2.imdecode(np.frombuffer(video_data, dtype=np.uint8), cv2.IMREAD_COLOR)
+            screen_frame = cv2.imdecode(np.frombuffer(screen_data, dtype=np.uint8), cv2.IMREAD_COLOR)
+
+            # 调整屏幕帧大小与视频帧一致
+            screen_frame = cv2.resize(screen_frame, (video_frame.shape[1], video_frame.shape[0]))
+
+            # 合成图像（简单叠加）
+            combined_frame = cv2.addWeighted(video_frame, 0.7, screen_frame, 0.3, 0)
+
+            # 压缩合成后的图像
+            _, combined_buffer = cv2.imencode(".jpg", combined_frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
+            asyncio.run(self.rtp_client.send_video(combined_buffer.tobytes()))
+
+        elif video_data:
+            asyncio.run(self.rtp_client.send_video(video_data))
+
+        elif screen_data:
+            asyncio.run(self.rtp_client.send_video(screen_data))
+
+        if audio_data:
+            asyncio.run(self.rtp_client.send_audio(audio_data))
+
+    def stop_all(self):
         """
         停止所有媒体捕获。
         """
-        self.running = False
+        self.stop_camera()
+        self.stop_microphone()
+        self.stop_screen_recording()
         print("All media capturing stopped.")
 
+    def start_video_display(self):
+        """
+        启动一个独立线程，用于显示视频帧。
+        """
+        self.display_running = True
 
-def encode_h264_frame(frame):
-    # 确保帧是 BGR 格式且具有正确的尺寸
-    if frame.dtype != np.uint8:
-        frame = frame.astype(np.uint8)
+        def display_thread():
+            while self.display_running:
+                if self.frame_queue:
+                    # 从队列中取出一帧
+                    frame = self.frame_queue.pop(0)
+                    start_time = time.time()
 
-    height, width, _ = frame.shape
+                    # 调整帧的大小
+                    resized_frame = cv2.resize(frame, (960, 540))
 
-    # 创建 FFmpeg 编码器命令（以流的方式处理）
-    encode_process = (
-        ffmpeg
-        .input('pipe:0', format='rawvideo', pix_fmt='bgr24', s=f'{width}x{height}')  # 动态获取尺寸
-        .output('pipe:1', vcodec='libx264', pix_fmt='yuv420p', preset='ultrafast', crf=23, f='h264')  # 编码为 H.264 格式
-        .run_async(pipe_stdin=True, pipe_stdout=True, pipe_stderr=True)
-    )
+                    # 显示帧
+                    cv2.imshow("Video Stream", resized_frame)
 
-    # 将帧写入编码器，并获取编码后的字节数据
-    encoded_data, stderr = encode_process.communicate(input=frame.tobytes())
-    # 输出 FFmpeg 错误信息以帮助调试
-    # if stderr:
-    #     print("FFmpeg stderr:", stderr.decode('utf-8'))
-    # 检查是否成功编码
-    if len(encoded_data) == 0:
-        raise ValueError("Failed to encode frame. FFmpeg returned no data.")
+                    # 检测退出按键
+                    key = cv2.waitKey(1)
+                    if key == ord('q'):
+                        print("Exiting video display...")
+                        self.stop_video_display()
+                        break
 
-    return encoded_data
+                    # 控制帧率
+                    elapsed_time = time.time() - start_time
+                    time_to_wait = max(0, self.frame_interval - elapsed_time)
+                    time.sleep(time_to_wait)
 
+        threading.Thread(target=display_thread, daemon=True).start()
+        print("Video display thread started.")
 
-# 读取视频帧并进行 H.264 编码
-def process_frame(frame):
-    # 假设输入的 frame 是 BGR 图像
-    # 使用 FFmpeg 进行 H.264 编码
-    # print(f"Received frame: {frame.shape}")
-    encoded_data = encode_h264_frame(frame)
-    # print(f"Encoded frame size: {len(encoded_data)} bytes")
-    return encoded_data
+    def stop_video_display(self):
+        """
+        停止视频显示。
+        """
+        self.display_running = False
+        cv2.destroyAllWindows()
+        print("Video display stopped.")

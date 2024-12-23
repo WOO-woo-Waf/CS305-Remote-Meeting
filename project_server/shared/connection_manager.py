@@ -104,13 +104,6 @@ class ConnectionManager:
     # === 清理方法 ===
     def clean_up(self):
         """清理空的会议和断开的客户端"""
-        # 清理会议中没有参与者的会议
-        empty_meetings = [meeting_id for meeting_id, data in self.meetings.items()
-                          if not data["participants"]]
-        for meeting_id in empty_meetings:
-            print(f"清理空会议: {meeting_id}")
-            del self.meetings[meeting_id]
-
         # 检查每个会议，移除不存在的客户端
         disconnected_clients = [client_id for client_id in self.connections if self.connections[client_id] is None]
         for meeting_id, data in self.meetings.items():
@@ -125,3 +118,10 @@ class ConnectionManager:
             print(f"清理断开的客户端连接: {client_id}")
             if client_id in self.connections:
                 del self.connections[client_id]
+
+        # 清理会议中没有参与者的会议
+        empty_meetings = [meeting_id for meeting_id, data in self.meetings.items()
+                          if not data["participants"]]
+        for meeting_id in empty_meetings:
+            print(f"清理空会议: {meeting_id}")
+            del self.meetings[meeting_id]

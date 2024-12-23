@@ -5,10 +5,10 @@ from network.rtp_client import RTPClient
 from shared.uiHandler import UIHandler
 from shared.media_manager import MediaManager
 
-server_ip = "127.0.0.1"
+server_ip = "10.16.180.184"
 server_port = 5555
 
-client_ip = "127.0.0.1"
+client_ip = "10.16.180.184"
 client_port = 5001
 
 
@@ -85,7 +85,6 @@ class OperationInterface:
         self.on_meeting = True
         self.conference_id = conference_id
         self.status = f"会议中-{self.conference_id}"
-        print(f"成功加入会议 {conference_id}")
         # self.start_ui()
         if not self.rtp_client:
             await self.rtp_connect()
@@ -121,6 +120,21 @@ class OperationInterface:
         if data_type not in self.shared_data:
             self.shared_data[data_type] = False  # 默认关闭
         self.shared_data[data_type] = not self.shared_data[data_type]
+        if data_type == "screen" or data_type == "s":
+            if self.shared_data[data_type]:
+                self.media_manager.start_screen_recording()
+            else:
+                self.media_manager.stop_screen_recording()
+        if data_type == "camera" or data_type == "c":
+            if self.shared_data[data_type]:
+                self.media_manager.start_camera()
+            else:
+                self.media_manager.stop_camera()
+        if data_type == "microphone" or data_type == "m":
+            if self.shared_data[data_type]:
+                self.media_manager.start_microphone()
+            else:
+                self.media_manager.stop_microphone()
         state = "开启" if self.shared_data[data_type] else "关闭"
         print(f"{data_type} 共享已{state}。")
 
@@ -154,12 +168,19 @@ class OperationInterface:
                 await self.quit_conference()
             elif user_input == "cancel":
                 await self.cancel_conference()
-            elif user_input.startswith("share"):
+            elif user_input.startswith("change"):
                 try:
                     _, data_type = user_input.split(maxsplit=1)
                     self.share_data(data_type)
                 except ValueError:
                     print("请指定共享类型（如屏幕、摄像头）。")
+            elif user_input.startswith("send"):
+                try:
+                    _, message = user_input.split(maxsplit=1)
+                    await self.web_socket.send_text_message(self.conference_id, message)
+                except ValueError:
+                    print("请输入要发送的消息。")
+
             elif user_input == "exit":
                 print("退出系统。再见！")
             else:

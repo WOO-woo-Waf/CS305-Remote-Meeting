@@ -93,7 +93,7 @@ class RTPManager:
         self.streams = {}  # 存储每个客户端的发送管道
         self.executor = ThreadPoolExecutor(max_workers=5)  # 最大线程池数
 
-    def start_stream_for_client(self, client_id, host="127.0.0.1", port=5000):
+    def start_stream_for_client(self, client_id, host="0.0.0.0", port=5000):
         pipeline = (
             f"appsrc ! videoconvert ! x264enc tune=zerolatency bitrate=500 speed-preset=ultrafast "
             f"! rtph264pay mtu=1200 ! udpsink host={host} port={port}"
@@ -129,7 +129,7 @@ class RTPManager:
         self.client_sockets[client_id] = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         while True:
             try:
-                self.client_sockets[client_id].bind(("127.0.0.1", self.start_port))
+                self.client_sockets[client_id].bind(("0.0.0.0", self.start_port))
                 # self.client_sockets[client_id].setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF,
                 #                                           8 * 1024 * 1024)  # 8MB 接收缓冲区
                 # self.client_sockets[client_id].setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF,
