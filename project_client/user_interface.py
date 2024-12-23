@@ -56,7 +56,7 @@ class OperationInterface:
         print("join <ID>    加入指定会议")
         print("quit         退出当前会议")
         print("cancel       取消当前会议")
-        print("share <type> 开启/关闭共享（如屏幕、摄像头）")
+        print("change <type> 开启/关闭共享（如屏幕、摄像头）")
         print("help         显示帮助菜单")
         print("exit         退出界面")
         print("=================")
