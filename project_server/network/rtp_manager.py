@@ -219,7 +219,7 @@ class RTPManager:
             asyncio.create_task(self.send_video_to_meeting(meeting_id))
             # asyncio.create_task(self.send_audio_to_meeting(meeting_id))
 
-    def create_rtp_packet(self, payload_type, payload, sequence_number, total_packets, cilent_id):
+    def create_rtp_packet(self, payload_type, payload, sequence_number, total_packets, client_id):
         """
         创建 RTP 数据包。
         :param payload_type: 数据类型 (0x01: 视频, 0x02: 音频)
@@ -231,7 +231,7 @@ class RTPManager:
         payload_length = len(payload)
 
         # 确保 self.client_id 是一个有效的 UUID 字符串
-        client_id_bytes = uuid.UUID(self.client_id).bytes  # 转换为 16 字节的字节流
+        client_id_bytes = uuid.UUID(client_id).bytes  # 转换为 16 字节的字节流
         if len(client_id_bytes) != 16:
             raise ValueError("client_id should be a valid UUID")
 
@@ -445,7 +445,7 @@ class RTPManager:
             sequence_number = sequence_number + 1
             rtp_packet = self.create_rtp_packet(payload_type=payload_type, payload=packet_part,
                                                 sequence_number=sequence_number,
-                                                total_packets=total_packets, cilent_id=client_id_)
+                                                total_packets=total_packets, client_id=client_id_)
             self.client_sockets[client_id].sendto(rtp_packet, client_address)
             video_payload = video_payload[MAX_UDP_PACKET_SIZE:]
 
@@ -454,7 +454,7 @@ class RTPManager:
             sequence_number = sequence_number + 1
             rtp_packet = self.create_rtp_packet(payload_type=payload_type, payload=video_payload,
                                                 sequence_number=sequence_number,
-                                                total_packets=total_packets, cilent_id=client_id_)
+                                                total_packets=total_packets, client_id=client_id_)
             self.client_sockets[client_id].sendto(rtp_packet, client_address)
 
         return
@@ -498,7 +498,7 @@ class RTPManager:
                 # 使用线程池处理视频数据传输
                 tasks = [
                     asyncio.create_task(
-                        self.send_data_to_client(client_id, client_address, frame_data, data_type='video', client_id=client_id))
+                        self.send_data_to_client(client_id, client_address, frame_data, data_type='video', client_id_=client_id))
                     for client_id, client_address in self.clients[meeting_id].items()
                     if client_id != exclude_client_id
                 ]
