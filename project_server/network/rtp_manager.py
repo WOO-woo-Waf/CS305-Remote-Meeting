@@ -473,7 +473,7 @@ class RTPManager:
             if frame is not None:
                 # print(f"{self.clients[meeting_id]}")
                 # 将帧编码为 JPG 格式
-                _, encoded_frame = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 50])
+                _, encoded_frame = cv2.imencode('.jpg', frame)
                 frame_data = encoded_frame.tobytes()
                 # frame_data = process_frame(frame)
                 # async with self.lock:
@@ -558,5 +558,6 @@ class RTPProtocol(asyncio.DatagramProtocol):
             asyncio.create_task(self.rtp_manager.play_video(client_id, meeting_id,
                                                             payload, sequence_number, total_packets))
         elif payload_type == 0x02:  # 音频类型
+            # asyncio.create_task(self.rtp_manager.send_audio_to_meeting(meeting_id, payload, exclude_client_id=client_id))
             if len(self.rtp_manager.clients[meeting_id]) > 2:
                 asyncio.create_task(self.rtp_manager.send_audio_to_meeting(meeting_id, payload))

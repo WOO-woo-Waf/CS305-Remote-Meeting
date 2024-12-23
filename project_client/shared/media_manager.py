@@ -1,3 +1,7 @@
+# 音视频采集和播放模块，负责操作摄像头和麦克风。
+import asyncio
+import time
+
 import cv2
 import ffmpeg
 import pyaudio
@@ -55,7 +59,11 @@ class MediaManager:
                 # 计算本次处理的时间
                 elapsed_time = time.time() - start_time
                 # 计算剩余时间，确保帧率稳定
-                time_to_wait = max(0, frame_interval - elapsed_time)
+                # time_to_wait = max(0, frame_interval - elapsed_time)
+                if frame_interval - elapsed_time > 0:
+                    time_to_wait = frame_interval - elapsed_time
+                else:
+                    time_to_wait = 0
                 time.sleep(time_to_wait)  # 休眠，等待合适的时间间隔
 
             cap.release()
@@ -129,9 +137,11 @@ class MediaManager:
 
                 # 计算本次处理的时间
                 elapsed_time = time.time() - start_time
-                # 计算剩余时间，确保帧率稳定
-                time_to_wait = max(0, frame_interval - elapsed_time)
-                time.sleep(time_to_wait)  # 休眠，等待合适的时间间隔
+                if elapsed_time < frame_interval:
+                    time_to_wait = frame_interval - elapsed_time
+                else:
+                    time_to_wait = 0
+                time.sleep(time_to_wait)
 
         threading.Thread(target=capture_screen, daemon=True).start()
         print("Screen recording started.")

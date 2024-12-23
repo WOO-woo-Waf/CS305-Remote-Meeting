@@ -11,11 +11,10 @@ import numpy as np
 from collections import deque
 
 from project_client.shared.Video_packet_assembler import VideoPacketAssembler
-from project_client.shared.media_manager import MediaManager
 
 MAX_UDP_PACKET_SIZE = 65000  # 定义一个最大 UDP 数据包大小，通常是 65535 字节
 
-media_manager = MediaManager(None)
+
 class RTPClient:
     def __init__(self, server_ip, server_port, client_port, client_id, meeting_id, client_ip="0.0.0.0", mode="unconnected"):
         """
@@ -62,7 +61,7 @@ class RTPClient:
         print(f"RTP Client initialized with IP {self.client_ip} and port {self.client_port}")
         # ui.update_text(f"RTP Client initialized with IP {self.client_ip} and port {self.client_port}")
         self.video_assemblers = None  # 视频包组装器
-        self.frame_interval = 1 / 30  # 视频帧之间的时间间隔（30 FPS）
+        self.frame_interval = 1 / 60  # 视频帧之间的时间间隔（30 FPS）
         asyncio.create_task(self.receive_data())  # 开启接收任务
         self.pipeline = (
             f"udpsrc port={self.server_port} ! application/x-rtp, payload=96 ! rtph264depay ! avdec_h264 "
@@ -367,7 +366,9 @@ class RTPClient:
         # 将视频包添加到组装器中
         frame = self.video_assemblers.add_packet(video_payload, sequence_number, total_packets)
 
+        # 如果合并成功，播放视频
         if frame is not None:
+            # print("Playing video...")
             # 获取当前时间戳
             start_time = time.time()
 
@@ -386,12 +387,11 @@ class RTPClient:
 
             # 控制帧率
             elapsed_time = time.time() - start_time
-            time_to_wait = max(0, self.frame_interval - elapsed_time)  # 计算剩余时间，确保帧率
+            if elapsed_time < self.frame_interval:
+                time_to_wait = self.frame_interval - elapsed_time
+            else:
+                time_to_wait = 0
             time.sleep(time_to_wait)
-            # if not media_manager.display_running:
-            #     media_manager.start_video_display()
-            # media_manager.frame_queue.append(frame)
-
 
 
 
