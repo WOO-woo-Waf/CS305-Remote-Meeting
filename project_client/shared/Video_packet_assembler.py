@@ -39,8 +39,10 @@ class VideoPacketAssembler:
             # 按照序列号排序视频包并合并
             sorted_packets = [self.packets[i] for i in sorted(self.packets.keys())]
             video_frame = b''.join(sorted_packets)  # 合并所有视频包的数据
-
-            sorted_packets.clear()
+            if len(sorted_packets) < total_packets:
+                return None  # 丢弃未完整的帧
+            self.packets.clear()  # 清理已处理的包
+            self.packets_received = 0
             # 异步解码
             # print(f"Decoding video frame with {len(video_frame)} bytes.")
             # self.async_decoder.decode_async(video_frame)
