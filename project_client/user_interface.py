@@ -8,7 +8,7 @@ from shared.media_manager import MediaManager
 server_ip = "10.16.180.184"
 server_port = 5555
 
-client_ip = "10.26.101.172"
+client_ip = "10.16.180.184"
 client_port = 5001
 
 
@@ -201,8 +201,8 @@ class OperationInterface:
                 except ValueError:
                     print("请输入要发送的消息。")
 
-            elif user_input == "exit":
-                print("退出系统。再见！")
+            elif user_input == "check":
+                await self.web_socket.check_meeting_all()
             else:
                 print("未知指令，请输入 'help' 查看帮助。")
 

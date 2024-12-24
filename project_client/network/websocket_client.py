@@ -146,6 +146,10 @@ class WebSocketClient:
         message = {"action": "CHECK_MEETING_ALL"}
         await self._send_message(message)
 
+    async def change_cs_mode_to_same(self, isSame):
+        message = {"action": "CHANGE_CS_MODE_TO_SAME"}
+        await self._send_message(message)
+
     async def _send_message(self, message):
         """
         发送消息到 WebSocket 服务器。

@@ -314,7 +314,7 @@ class RTPClient:
 
                 # 根据负载类型来播放数据
                 if payload_type == 0x01:  # 视频类型
-                    await asyncio.create_task(self.play_video(payload, sequence_number, total_packets))
+                    await asyncio.create_task(self.play_video(payload, sequence_number, total_packets, client_id))
                 elif payload_type == 0x02:  # 音频类型
                     # print("Playing audio...")
                     await self.play_audio(data_["payload"], client_id)
@@ -369,7 +369,7 @@ class RTPClient:
         """
         await self.audio_player.add_audio(client_id, audio_payload)
 
-    async def play_video(self, video_payload, sequence_number, total_packets):
+    async def play_video(self, video_payload, sequence_number, total_packets, client_id):
         """
         解析视频数据并显示，处理视频包的合并。
         :param video_payload: 视频数据
@@ -405,9 +405,12 @@ class RTPClient:
             # elapsed_time = time.time() - start_time
             # time_to_wait = max(0, self.frame_interval - elapsed_time)  # 计算剩余时间，确保帧率
             # time.sleep(time_to_wait)
-            if not media_manager.display_running:
-                media_manager.start_video_display()
-            media_manager.frame_queue.append(frame)
+
+            # if not media_manager.display_running:
+            #     media_manager.start_video_display()
+            # media_manager.frame_queue.append(frame)
+            media_manager.add_video(client_id, frame)
+
 
 
 

@@ -120,6 +120,9 @@ class RTPManager:
     #         process.stdin.close()
     #         process.wait()
     #         self.streams[client_id] = None
+    async def change_cs_mode_to_same(self):
+        self.mode = "same"
+        print("Change mode to same.")
 
     async def register_socket(self, client_id):
         """

@@ -134,6 +134,9 @@ class WebSocketManager:
             elif action == "CHECK_MEETING_ALL":
                 await self.check_meeting_all(client_id)
 
+            elif action == "CHANGE_CS_MODE_TO_SAME":
+                await self.change_cs_mode_to_same(client_id)
+
             elif action == "SEND_MESSAGE":
                 # 处理客户端发送的聊天信息
                 await self.handle_send_message(client_id, data)
@@ -153,6 +156,9 @@ class WebSocketManager:
             "action": "MEETING_LIST",
             "meetings": meetings
         })
+
+    async def change_cs_mode_to_same(self, client_id):
+        self.rtp_manager.change_cs_mode_to_same(client_id)
 
     async def create_meeting(self, client_id, data):
         """处理创建会议请求"""
