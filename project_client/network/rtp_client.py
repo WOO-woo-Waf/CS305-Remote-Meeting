@@ -85,39 +85,6 @@ class RTPClient:
     def stop_p2p(self):
         self.mode = "CS"
 
-    # def create_rtp_packet(self, payload_type, payload):
-    #     """
-    #     创建 RTP 数据包。
-    #     :param payload_type: 数据类型 (0x01: 视频, 0x02: 音频)
-    #     :param payload: 负载数据
-    #     :return: RTP 数据包
-    #     """
-    #     # payload 应该是字节流，因此 length 应该是字节流的长度
-    #     payload_length = len(payload)
-    #
-    #     # 确保 self.client_id 是一个有效的 UUID 字符串
-    #     # uuid.UUID(self.client_id) 确保转换为 UUID 类型，然后转化为字节流
-    #     client_id_bytes = uuid.UUID(self.client_id).bytes  # 转换为 16 字节的字节流
-    #     if len(client_id_bytes) != 16:
-    #         raise ValueError("client_id should be a valid UUID")
-    #
-    #     # 将 meeting_id 转换为字节流
-    #     meeting_id_bytes = self.meeting_id.encode('utf-8')  # 将 meeting_id 字符串转为字节流
-    #     # 填充字节流，如果长度小于 4 字节，填充为零
-    #     meeting_id_bytes = meeting_id_bytes.ljust(4, b'\0')[:4]  # 保证长度为 4 字节
-    #
-    #     # 创建 RTP 头部（1 字节 payload_type + 2 字节 payload_length + 16 字节 client_id + 4 字节 meeting_id）
-    #     header = struct.pack(
-    #         '!BBH16s4s',  # 格式： 1 字节 (payload_type) + 2 字节 (payload_length) + 16 字节 UUID + 4 字节 meeting_id
-    #         payload_type,  # 数据类型，视频或音频
-    #         (payload_length >> 8) & 0xFF,  # 高 8 位
-    #         payload_length & 0xFF,  # 低 8 位
-    #         client_id_bytes,  # 客户端 ID（16 字节 UUID）
-    #         meeting_id_bytes  # 会议 ID（4 字节）
-    #     )
-    #
-    #     # 返回 RTP 数据包（头部 + 负载）
-    #     return header + payload
     def create_rtp_packet(self, payload_type, payload, sequence_number, total_packets):
         """
         创建 RTP 数据包。
@@ -378,7 +345,7 @@ class RTPClient:
         """
         # 如果视频包组装器不存在，创建一个新的
         if self.video_assemblers is None:
-            self.video_assemblers = VideoPacketAssembler(1920, 1080)
+            self.video_assemblers = VideoPacketAssembler(1920,1080)
             self.video_assemblers.start_assembling(total_packets)
 
         # 将视频包添加到组装器中
@@ -409,7 +376,7 @@ class RTPClient:
             # if not media_manager.display_running:
             #     media_manager.start_video_display()
             # media_manager.frame_queue.append(frame)
-            media_manager.add_video(client_id, frame)
+            await media_manager.add_video(client_id, frame)
 
 
 
