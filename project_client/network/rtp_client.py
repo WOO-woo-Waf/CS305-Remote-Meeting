@@ -385,29 +385,29 @@ class RTPClient:
         frame = self.video_assemblers.add_packet(video_payload, sequence_number, total_packets)
 
         if frame is not None:
-            # 获取当前时间戳
-            start_time = time.time()
-
-            # 调整帧的大小
-            resized_frame = cv2.resize(frame, (960, 540))
-
-            # 使用 cv2.imshow 显示帧
-            cv2.imshow(f"Video Stream_client {self.meeting_id} {self.client_port}", resized_frame)
-
-            # 等待按键事件并设置适当的退出条件
-            key = cv2.waitKey(1)
-            if key == ord('q'):  # 如果按下 'q' 键退出
-                print("Exiting video stream...")
-                cv2.destroyAllWindows()
-                return
-
-            # 控制帧率
-            elapsed_time = time.time() - start_time
-            time_to_wait = max(0, self.frame_interval - elapsed_time)  # 计算剩余时间，确保帧率
-            time.sleep(time_to_wait)
-            # if not media_manager.display_running:
-            #     media_manager.start_video_display()
-            # media_manager.frame_queue.append(frame)
+            # # 获取当前时间戳
+            # start_time = time.time()
+            #
+            # # 调整帧的大小
+            # resized_frame = cv2.resize(frame, (1440, 810))
+            #
+            # # 使用 cv2.imshow 显示帧
+            # cv2.imshow(f"Video Stream_client {self.meeting_id} {self.client_port}", resized_frame)
+            #
+            # # 等待按键事件并设置适当的退出条件
+            # key = cv2.waitKey(1)
+            # if key == ord('q'):  # 如果按下 'q' 键退出
+            #     print("Exiting video stream...")
+            #     cv2.destroyAllWindows()
+            #     return
+            #
+            # # 控制帧率
+            # elapsed_time = time.time() - start_time
+            # time_to_wait = max(0, self.frame_interval - elapsed_time)  # 计算剩余时间，确保帧率
+            # time.sleep(time_to_wait)
+            if not media_manager.display_running:
+                media_manager.start_video_display()
+            media_manager.frame_queue.append(frame)
 
 
 
