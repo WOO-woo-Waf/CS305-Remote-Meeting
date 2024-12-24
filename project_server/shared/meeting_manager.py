@@ -45,7 +45,7 @@ class MeetingLifecycleManager:
         :param creator_id: 创建者客户端 ID
         :return: 成功返回 True，否则返回 False
         """
-        participants = self.connection_manager.get_participants(meeting_id)
+        participants = self.connection_manager.cancel_meeting(meeting_id, creator_id)
         if participants:
             print(f"Meeting {meeting_id} canceled by {creator_id}")
             return participants
