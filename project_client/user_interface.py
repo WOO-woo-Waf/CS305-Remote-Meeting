@@ -58,6 +58,7 @@ class OperationInterface:
         print("cancel       取消当前会议")
         print("open/close camera 开启/关闭摄像头（不能与屏幕共享同时开启）")
         print("open/close screen 开启/关闭屏幕共享（不能与摄像头同时开启）")
+        print("change quality 调整视频质量 (low,medium,high)")
         print("help         显示帮助菜单")
         print("exit         退出界面")
         print("=================")
@@ -188,6 +189,12 @@ class OperationInterface:
                     self.share_data(action, device_type)
                 except ValueError:
                     print("请指定正确的操作和设备类型（如 open camera）。")
+            elif user_input.startswith("change"):
+                try:
+                    _,quality = user_input.split(maxsplit=1)
+                    self.media_manager.set_video_quality(quality)
+                except ValueError:
+                    print("请输入正确格式: change + quality")
             elif user_input.startswith("send"):
                 try:
                     _, message = user_input.split(maxsplit=1)
