@@ -139,6 +139,13 @@ class WebSocketClient:
                 ui.update_text("服务器连接已关闭，尝试重新连接...")
                 break
 
+    async def check_meeting_all(self):
+        """
+        查询会议状态。
+        """
+        message = {"action": "CHECK_MEETING_ALL"}
+        await self._send_message(message)
+
     async def _send_message(self, message):
         """
         发送消息到 WebSocket 服务器。
@@ -225,6 +232,11 @@ class WebSocketClient:
             elif action == "STOP_P2P":
                 self.cil.stop_p2p()
                 ui.update_text(f"[服务器响应] P2P 连接已关闭")
+
+            elif action == "MEETING_LIST":
+                # 处理会议状态查询
+                meetings = data.get("meetings", {})
+                ui.update_text(f"[服务器响应]{action}: {meetings}")
             else:
                 # 未知消息类型
                 ui.update_text(f"[未知消息类型] {action}: {data}")

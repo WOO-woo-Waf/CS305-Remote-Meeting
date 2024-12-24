@@ -79,7 +79,7 @@ class RTPManager:
         self.buffers = {}  # 存储 {meeting_id: {client_id: [data1, data2, ...]}}
         self.buffer_size = 1  # 默认缓冲区大小
         self.connection_manager = ConnectionManager()  # 保持连接管理逻辑
-        self.dynamic_video_frame_manager = DynamicVideoFrameManager(frame_width=960, frame_height=540)
+        self.dynamic_video_frame_manager = DynamicVideoFrameManager(frame_width=1440, frame_height=810)
         self.dynamic_audio_manager = DynamicAudioManager()
         self.websockets = websockets
 
@@ -94,6 +94,7 @@ class RTPManager:
         self.video_frame = {}  # 存储每个会议的客户端帧
         self.streams = {}  # 存储每个客户端的发送管道
         self.executor = ThreadPoolExecutor(max_workers=5)  # 最大线程池数
+        self.mode = "default"
 
     # def start_stream_for_client(self, client_id, host="0.0.0.0", port=5000):
     #     pipeline = (
@@ -209,14 +210,15 @@ class RTPManager:
             await self.websockets.p2p_send_address(clients[0], clients[1], ip2, port2)
             await self.websockets.p2p_send_address(clients[1], clients[0], ip1, port1)
         else:
-            print(f"meeting {meeting_id} has {len(self.clients[meeting_id])} clients.")
+            print(f"meeting {meeting_id} has {len(self.clients[meeting_id])} clients. Mode is {self.mode}.")
             self.dynamic_video_frame_manager.initialize_meeting(meeting_id)
             self.dynamic_audio_manager.initialize_meeting(meeting_id)
             clients = list(self.clients[meeting_id].keys())
             for client_id in clients:
                 await self.websockets.stop_p2p(client_id)
             print(f"Starting video frame forwarding task for meeting {meeting_id}.")
-            asyncio.create_task(self.send_video_to_meeting(meeting_id))
+            if self.mode == "same":
+                asyncio.create_task(self.send_video_to_meeting(meeting_id))
             # asyncio.create_task(self.send_audio_to_meeting(meeting_id))
 
     def create_rtp_packet(self, payload_type, payload, sequence_number, total_packets, client_id):
@@ -386,7 +388,19 @@ class RTPManager:
         frame = self.video_assemblers[(meeting_id, client_id)].add_packet(video_payload, sequence_number, total_packets)
         # frame = self.video_assemblers[(meeting_id, client_id)].get_decoded_frame()  # 阻塞式获取解码后的帧
         if frame is not None:
-            self.dynamic_video_frame_manager.add_or_update_client_frame(meeting_id, client_id, frame)
+            if self.mode == "same":
+                self.dynamic_video_frame_manager.add_or_update_client_frame(meeting_id, client_id, frame)
+            else:
+                _, encoded_frame = cv2.imencode('.jpg', frame)
+                frame_data = encoded_frame.tobytes()
+                # 使用线程池处理视频数据传输
+                tasks = [
+                    asyncio.create_task(
+                        self.send_data_to_client(client_id_, client_address, frame_data, data_type='video', client_id_=client_id))
+                    for client_id_, client_address in self.clients[meeting_id].items()
+                    if client_id != client_id
+                ]
+                await asyncio.gather(*tasks)
             # print(f"Playing video stream {client_id} in meeting {meeting_id}")
             # # 获取当前时间戳
             # start_time = time.time()
@@ -578,6 +592,7 @@ class RTPProtocol(asyncio.DatagramProtocol):
 
         # 根据负载类型来播放数据
         if payload_type == 0x01:  # 视频类型
+
             asyncio.create_task(self.rtp_manager.play_video(client_id, meeting_id,
                                                             payload, sequence_number, total_packets))
         elif payload_type == 0x02:  # 音频类型

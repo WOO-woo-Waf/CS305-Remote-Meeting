@@ -87,6 +87,10 @@ class ConnectionManager:
         """获取会议中的参与者列表"""
         return self.meetings.get(meeting_id, {}).get("participants", [])
 
+    def check_meeting_all(self):
+        """检查会议是否存在"""
+        return self.meetings
+
     # === 数据转发 ===
     async def route_text(self, meeting_id, sender_id, message):
         """转发文本消息到会议中的所有参与者"""

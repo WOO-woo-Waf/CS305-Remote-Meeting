@@ -131,6 +131,9 @@ class WebSocketManager:
             #     video_data = data.get("video_data")  # 视频数据（需要以 RTP 方式接收）
             #     await self.data_router.route_video(meeting_id, client_id, video_data)
 
+            elif action == "CHECK_MEETING_ALL":
+                await self.check_meeting_all(client_id)
+
             elif action == "SEND_MESSAGE":
                 # 处理客户端发送的聊天信息
                 await self.handle_send_message(client_id, data)
@@ -143,6 +146,13 @@ class WebSocketManager:
 
         except Exception as e:
             print(f"Error processing message from {client_id}: {e}")
+
+    async def check_meeting_all(self, client_id):
+        meetings = self.connection_manager.check_meeting_all()
+        await self.send_message(client_id, {
+            "action": "MEETING_LIST",
+            "meetings": meetings
+        })
 
     async def create_meeting(self, client_id, data):
         """处理创建会议请求"""
