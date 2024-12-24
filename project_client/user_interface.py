@@ -119,28 +119,39 @@ class OperationInterface:
 
     def share_data(self, data_type):
         """切换共享功能（屏幕、摄像头等）"""
-        if data_type not in self.shared_data:
-            self.shared_data[data_type] = False  # 默认关闭
-        self.shared_data[data_type] = not self.shared_data[data_type]
+        # if data_type not in self.shared_data:
+        #     self.shared_data[data_type] = False  # 默认关闭
+        # self.shared_data[data_type] = not self.shared_data[data_type]
         if data_type == "screen" or data_type == "s":
-            if self.shared_data[data_type] and not self.shared_data["camera"]:
+            if not self.shared_data[data_type] and not self.shared_data["camera"]:
                 self.media_manager.start_screen_recording()
+                self.shared_data[data_type] = True
+            elif not self.shared_data[data_type] and self.shared_data["camera"]:
+                print("摄像头已开启，无法启动屏幕录制")
             else:
                 self.media_manager.stop_screen_recording()
-        if data_type == "camera" or data_type == "c":
+                self.shared_data[data_type] = False
+        elif data_type == "camera" or data_type == "c":
             if self.shared_data[data_type] and not self.shared_data["screen"]:
                 self.media_manager.start_camera()
+                self.shared_data[data_type] = True
+            elif not self.shared_data[data_type] and self.shared_data["screen"]:
+                print("屏幕录制已开启，无法启动摄像头")
             else:
                 self.media_manager.stop_camera()
-        if data_type == "microphone" or data_type == "m":
-            if self.shared_data[data_type]:
+                self.shared_data[data_type] = False
+        elif data_type == "microphone" or data_type == "m":
+            if not self.shared_data[data_type]:
                 self.media_manager.start_microphone()
+                self.shared_data[data_type] = True
             else:
                 self.media_manager.stop_microphone()
+                self.shared_data[data_type] = False
         if data_type == "high" or data_type == "low" or data_type == "medium":
             self.media_manager.set_video_quality(data_type)
+            print(f"视频质量已切换至{data_type}")
         state = "开启" if self.shared_data[data_type] else "关闭"
-        if data_type in ["camera", "screen", "audio"]:
+        if data_type in ["camera", "screen", "microphone","c","s","m"]:
             print(f"{data_type} 共享已{state}。")
         else:
             print(f"未知共享类型 {data_type}。")
