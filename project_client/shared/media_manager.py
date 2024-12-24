@@ -1,5 +1,7 @@
 import asyncio
 import time
+from turtledemo.penrose import start
+
 import cv2
 import pyaudio
 import threading
@@ -71,11 +73,16 @@ class MediaManager:
 
                 # 调整分辨率
                 frame = cv2.resize(frame, (self.width, self.height))
+                # 调整图片格式
+
                 self.process_and_send(video_data=frame)
 
                 # 确保帧率稳定
                 elapsed_time = time.time() - start_time
-                time_to_wait = max(0, self.frame_interval - elapsed_time)
+                if self.frame_interval - elapsed_time > 0:
+                    time_to_wait = self.frame_interval - elapsed_time
+                else:
+                    time_to_wait = 0
                 time.sleep(time_to_wait)
 
             cap.release()
@@ -139,7 +146,10 @@ class MediaManager:
 
                 # 确保帧率稳定
                 elapsed_time = time.time() - start_time
-                time_to_wait = max(0, self.frame_interval - elapsed_time)
+                if self.frame_interval - elapsed_time > 0:
+                    time_to_wait = self.frame_interval - elapsed_time
+                else:
+                    time_to_wait = 0
                 time.sleep(time_to_wait)
 
         threading.Thread(target=capture_screen, daemon=True).start()
@@ -216,10 +226,10 @@ class MediaManager:
         启动一个独立线程，用于显示视频帧。
         """
         self.display_running = True
-
         def display_thread():
             while self.display_running:
                 if self.frame_queue:
+                    start_time = time.time()
                     frame = self.frame_queue.pop(0)
                     resized_frame = cv2.resize(frame, (self.width, self.height))
                     cv2.imshow("Video Stream", resized_frame)
@@ -227,7 +237,12 @@ class MediaManager:
                     if key == ord('q'):
                         self.stop_video_display()
                         break
-
+                    elapsed_time = time.time() - start_time
+                    if self.frame_interval - elapsed_time > 0:
+                        time_to_wait = self.frame_interval - elapsed_time
+                    else:
+                        time_to_wait = 0
+                    time.sleep(time_to_wait)
         threading.Thread(target=display_thread, daemon=True).start()
         print("Video display thread started.")
 
