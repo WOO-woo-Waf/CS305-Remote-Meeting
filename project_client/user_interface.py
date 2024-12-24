@@ -8,7 +8,7 @@ from shared.media_manager import MediaManager
 server_ip = "10.16.180.184"
 server_port = 5555
 
-client_ip = "10.16.180.184"
+client_ip = "10.26.101.172"
 client_port = 5001
 
 
@@ -56,7 +56,8 @@ class OperationInterface:
         print("join <ID>    加入指定会议")
         print("quit         退出当前会议")
         print("cancel       取消当前会议")
-        print("change <type> 开启/关闭共享（如屏幕、摄像头）")
+        print("open/close camera 开启/关闭摄像头（不能与屏幕共享同时开启）")
+        print("open/close screen 开启/关闭屏幕共享（不能与摄像头同时开启）")
         print("help         显示帮助菜单")
         print("exit         退出界面")
         print("=================")
@@ -117,45 +118,39 @@ class OperationInterface:
         else:
             print("当前没有会议，无法取消。")
 
-    def share_data(self, data_type):
-        """切换共享功能（屏幕、摄像头等）"""
-        # if data_type not in self.shared_data:
-        #     self.shared_data[data_type] = False  # 默认关闭
-        # self.shared_data[data_type] = not self.shared_data[data_type]
-        if data_type == "screen" or data_type == "s":
-            if not self.shared_data[data_type] and not self.shared_data["camera"]:
-                self.media_manager.start_screen_recording()
-                self.shared_data[data_type] = True
-            elif not self.shared_data[data_type] and self.shared_data["camera"]:
-                print("摄像头已开启，无法启动屏幕录制")
-            else:
-                self.media_manager.stop_screen_recording()
-                self.shared_data[data_type] = False
-        elif data_type == "camera" or data_type == "c":
-            if self.shared_data[data_type] and not self.shared_data["screen"]:
-                self.media_manager.start_camera()
-                self.shared_data[data_type] = True
-            elif not self.shared_data[data_type] and self.shared_data["screen"]:
-                print("屏幕录制已开启，无法启动摄像头")
-            else:
-                self.media_manager.stop_camera()
-                self.shared_data[data_type] = False
-        elif data_type == "microphone" or data_type == "m":
-            if not self.shared_data[data_type]:
-                self.media_manager.start_microphone()
-                self.shared_data[data_type] = True
-            else:
-                self.media_manager.stop_microphone()
-                self.shared_data[data_type] = False
-        if data_type == "high" or data_type == "low" or data_type == "medium":
-            self.media_manager.set_video_quality(data_type)
-            print(f"视频质量已切换至{data_type}")
-        state = "开启" if self.shared_data[data_type] else "关闭"
-        if data_type in ["camera", "screen", "microphone","c","s","m"]:
-            print(f"{data_type} 共享已{state}。")
-        else:
-            print(f"未知共享类型 {data_type}。")
+    def share_data(self, action, device_type):
+        """Toggle the state of a device (screen, camera, microphone) based on action."""
+        if device_type not in self.shared_data:
+            print(f"未知设备类型 {device_type}。")
+            return
 
+        if action == "open":
+            if not self.shared_data[device_type]:
+                if device_type == "screen" and not self.shared_data["camera"]:
+                    self.media_manager.start_screen_recording()
+                elif device_type == "camera" and not self.shared_data["screen"]:
+                    self.media_manager.start_camera()
+                elif device_type == "microphone":
+                    self.media_manager.start_microphone()
+                else:
+                    print(f"无法开启 {device_type}，可能与其他设备冲突。")
+                    return
+                self.shared_data[device_type] = True
+                print(f"{device_type} 共享已开启。")
+            else:
+                print(f"{device_type} 已经是开启状态。")
+        elif action == "close":
+            if self.shared_data[device_type]:
+                if device_type == "screen":
+                    self.media_manager.stop_screen_recording()
+                elif device_type == "camera":
+                    self.media_manager.stop_camera()
+                elif device_type == "microphone":
+                    self.media_manager.stop_microphone()
+                self.shared_data[device_type] = False
+                print(f"{device_type} 共享已关闭。")
+            else:
+                print(f"{device_type} 已经是关闭状态。")
     def start_ui(self):
         """启动 UI 界面用于展示接收的数据"""
         if not self.ui_handler:
@@ -171,7 +166,6 @@ class OperationInterface:
         print("欢迎使用会议管理系统！输入 'help' 查看命令。")
         while True:
             current_status = f"({self.status})"
-            # 异步获取用户输入，并处理字符串
             user_input = await aioconsole.ainput(f"{current_status} 请输入指令: ")
             user_input = user_input.strip().lower()
             if user_input == "help":
@@ -188,24 +182,19 @@ class OperationInterface:
                 await self.quit_conference()
             elif user_input == "cancel":
                 await self.cancel_conference()
-            elif user_input.startswith("change"):
+            elif user_input.startswith("open") or user_input.startswith("close"):
                 try:
-                    _, data_type = user_input.split(maxsplit=1)
-                    self.share_data(data_type)
+                    action, device_type = user_input.split(maxsplit=1)
+                    self.share_data(action, device_type)
                 except ValueError:
-                    print("请指定共享类型（如屏幕、摄像头）。")
+                    print("请指定正确的操作和设备类型（如 open camera）。")
             elif user_input.startswith("send"):
                 try:
                     _, message = user_input.split(maxsplit=1)
                     await self.web_socket.send_text_message(self.conference_id, message)
                 except ValueError:
                     print("请输入要发送的消息。")
-
             elif user_input == "check":
                 await self.web_socket.check_meeting_all()
             else:
                 print("未知指令，请输入 'help' 查看帮助。")
-
-
-
-
