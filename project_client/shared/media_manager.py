@@ -59,6 +59,8 @@ class MediaManager:
         self.width, self.height = self.resolution_settings[quality]
         print(f"Video quality set to {quality}. Resolution: {self.width}x{self.height}, Compression Quality: {self.compression_quality[quality]}")
 
+
+
     def start_camera(self):
         """
         打开摄像头，捕获视频帧并发送。
@@ -66,28 +68,29 @@ class MediaManager:
         cap = cv2.VideoCapture(0)
         self.camera_running = True
 
-        def capture_video():
-            while self.camera_running:
-                start_time = time.time()
-                ret, frame = cap.read()
-                if not ret:
-                    print("Failed to capture video frame.")
-                    break
-
-                # 调整分辨率
-                # frame = cv2.resize(frame, (self.width, self.height))
-                self.process_and_send(video_data=frame)
-
-                # 确保帧率稳定
-                elapsed_time = time.time() - start_time
-                if elapsed_time < self.frame_interval:
-                    time_to_wait = self.frame_interval - elapsed_time
-                    time.sleep(time_to_wait)
-
-            cap.release()
-
-        threading.Thread(target=capture_video, daemon=True).start()
+        asyncio.create_task(self.capture_camera_frame(cap))
         print("Camera started.")
+
+    async def capture_camera_frame(self,cap):
+        while self.camera_running:
+            start_time = time.time()
+            ret, frame = cap.read()
+            if not ret:
+                print("Failed to capture video frame.")
+                break
+
+            # 调整分辨率
+            frame = cv2.resize(frame, (self.width, self.height))
+
+            # 立即压缩和发送
+            encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), self.compression_quality[self.video_quality]]
+            _, buffer = cv2.imencode(".jpg", frame, encode_param)
+            await self.rtp_client.send_video(buffer.tobytes())
+
+            # 确保帧率稳定
+            elapsed_time = time.time() - start_time
+            if elapsed_time < self.frame_interval:
+                await asyncio.sleep(self.frame_interval - elapsed_time)
 
     def stop_camera(self):
         """
@@ -231,8 +234,8 @@ class MediaManager:
                     break
                 # 确保帧率稳定
                 elapsed_time = time.time() - start_time
-                if elapsed_time < self.frame_interval:
-                    time_to_wait = self.frame_interval - elapsed_time
+                if elapsed_time < self.frame_interval/1.5:
+                    time_to_wait = self.frame_interval/1.5 - elapsed_time
                     time.sleep(time_to_wait)
 
             except Exception as e:
