@@ -1,16 +1,10 @@
-# 音视频采集和播放模块，负责操作摄像头和麦克风。
 import asyncio
 import time
-
 import cv2
-import ffmpeg
 import pyaudio
 import threading
 import pyautogui
-from PIL import Image
 import numpy as np
-import asyncio
-import time
 
 
 class MediaManager:
@@ -35,35 +29,54 @@ class MediaManager:
         self.frame_interval = 1 / target_fps
         self.frame_queue = []  # 用于存储待显示的帧
 
+        # 视频质量设置
+        self.video_quality = "medium"
+        self.resolution_settings = {
+            "low": (640, 360),
+            "medium": (1280, 720),
+            "high": (1920, 1080)
+        }
+        self.compression_quality = {
+            "low": 50,
+            "medium": 75,
+            "high": 90
+        }
+        self.width, self.height = self.resolution_settings[self.video_quality]
+        self.set_video_quality(self.video_quality)
+
+    def set_video_quality(self, quality):
+        """
+        设置视频质量，包括分辨率和压缩率。
+        """
+        if quality not in self.resolution_settings:
+            raise ValueError("Invalid video quality. Choose from 'low', 'medium', 'high'.")
+        self.video_quality = quality
+        self.width, self.height = self.resolution_settings[quality]
+        print(f"Video quality set to {quality}. Resolution: {self.width}x{self.height}, Compression Quality: {self.compression_quality[quality]}")
+
     def start_camera(self):
         """
         打开摄像头，捕获视频帧并发送。
         """
         cap = cv2.VideoCapture(0)
         self.camera_running = True
-        frame_interval = 1 / self.target_fps
 
         def capture_video():
             while self.camera_running:
-                start_time = time.time()  # 记录当前时间
+                start_time = time.time()
                 ret, frame = cap.read()
                 if not ret:
                     print("Failed to capture video frame.")
                     break
 
-                # 压缩视频帧
-                _, buffer = cv2.imencode(".jpg", frame)
-                video_data = buffer.tobytes()
-                self.process_and_send(video_data=video_data)
+                # 调整分辨率
+                frame = cv2.resize(frame, (self.width, self.height))
+                self.process_and_send(video_data=frame)
 
-                # 计算本次处理的时间
+                # 确保帧率稳定
                 elapsed_time = time.time() - start_time
-                # 计算剩余时间，确保帧率稳定
-                if frame_interval - elapsed_time > 0:
-                    time_to_wait = frame_interval - elapsed_time
-                else:
-                    time_to_wait = 0
-                time.sleep(time_to_wait)  # 休眠，等待合适的时间间隔
+                time_to_wait = max(0, self.frame_interval - elapsed_time)
+                time.sleep(time_to_wait)
 
             cap.release()
 
@@ -112,34 +125,21 @@ class MediaManager:
         开始屏幕录制，捕获屏幕图像并发送。
         """
         self.screen_running = True
-        # 计算每帧的时间间隔（秒）
-        frame_interval = 1 / self.target_fps
 
         def capture_screen():
             while self.screen_running:
-                start_time = time.time()  # 记录当前时间
-                # 截取屏幕
+                start_time = time.time()
+
+                # 截取屏幕并调整分辨率
                 screen = pyautogui.screenshot()
-                if screen is None:
-                    print("Failed to capture screen.")
-                    continue
-
-                # 将 PIL 图像转换为 numpy 数组
                 frame = np.array(screen)
-                # 转换颜色格式（PIL 默认是 RGB，OpenCV 需要 BGR）
                 frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+                frame = cv2.resize(frame, (self.width, self.height))
+                self.process_and_send(screen_data=frame)
 
-                # 压缩图像为 JPEG 格式
-                _, buffer = cv2.imencode('.jpg', frame)
-                screen_data = buffer.tobytes()
-                self.process_and_send(screen_data=screen_data)
-
-                # 计算本次处理的时间
+                # 确保帧率稳定
                 elapsed_time = time.time() - start_time
-                if elapsed_time < frame_interval:
-                    time_to_wait = frame_interval - elapsed_time
-                else:
-                    time_to_wait = 0
+                time_to_wait = max(0, self.frame_interval - elapsed_time)
                 time.sleep(time_to_wait)
 
         threading.Thread(target=capture_screen, daemon=True).start()
@@ -157,37 +157,49 @@ class MediaManager:
         处理和发送捕获的数据。
         如果有视频和屏幕数据，则合成后发送；否则分别发送。
         """
-        if video_data and screen_data:
-            video_frame = cv2.imdecode(np.frombuffer(video_data, dtype=np.uint8), cv2.IMREAD_COLOR)
-            screen_frame = cv2.imdecode(np.frombuffer(screen_data, dtype=np.uint8), cv2.IMREAD_COLOR)
+        if video_data is not None or screen_data is not None:
+            # 如果有视频和屏幕帧，进行合成
+            if video_data is not None and screen_data is not None:
+                video_frame = video_data
+                screen_frame = screen_data
 
-            # 调整屏幕帧大小与视频帧一致
-            screen_frame = cv2.resize(screen_frame, (1280, 720))  # 设置屏幕录制分辨率为 1280x720
+                # 调整屏幕帧大小与视频帧一致
+                screen_frame = cv2.resize(screen_frame, (self.width, self.height))
 
-            # 缩小摄像头内容
-            small_frame_height = 160  # 缩小摄像头画面的高度
-            small_frame_width = 160   # 缩小摄像头画面的宽度
-            small_frame = cv2.resize(video_frame, (small_frame_width, small_frame_height))
+                # 缩小摄像头内容
+                small_frame_height = 160
+                small_frame_width = 160
+                small_frame = cv2.resize(video_frame, (small_frame_width, small_frame_height))
 
-            # 定义摄像头画面放置位置（右下角）
-            x_offset = screen_frame.shape[1] - small_frame_width - 20  # 距离右边和下边各 20 像素
-            y_offset = screen_frame.shape[0] - small_frame_height - 20
+                # 定义摄像头画面放置位置（右下角）
+                x_offset = screen_frame.shape[1] - small_frame_width - 20
+                y_offset = screen_frame.shape[0] - small_frame_height - 20
 
-            # 将小画面嵌入屏幕录制内容中
-            combined_frame = screen_frame.copy()
-            combined_frame[y_offset:y_offset + small_frame_height, x_offset:x_offset + small_frame_width] = small_frame
+                # 将小画面嵌入屏幕录制内容中
+                combined_frame = screen_frame.copy()
+                combined_frame[y_offset:y_offset + small_frame_height, x_offset:x_offset + small_frame_width] = small_frame
 
-            # 压缩合成后的图像
-            _, combined_buffer = cv2.imencode(".jpg", combined_frame)
-            asyncio.run(self.rtp_client.send_video(combined_buffer.tobytes()))
+                # 压缩合成后的图像
+                encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), self.compression_quality[self.video_quality]]
+                _, combined_buffer = cv2.imencode(".jpg", combined_frame, encode_param)
+                asyncio.run(self.rtp_client.send_video(combined_buffer.tobytes()))
 
-        elif video_data:
-            asyncio.run(self.rtp_client.send_video(video_data))
+            # 单独处理视频帧
+            elif video_data is not None:
+                frame = cv2.resize(video_data, (self.width, self.height))
+                encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), self.compression_quality[self.video_quality]]
+                _, buffer = cv2.imencode(".jpg", frame, encode_param)
+                asyncio.run(self.rtp_client.send_video(buffer.tobytes()))
 
-        elif screen_data:
-            asyncio.run(self.rtp_client.send_video(screen_data))
+            # 单独处理屏幕帧
+            elif screen_data is not None:
+                frame = cv2.resize(screen_data, (self.width, self.height))
+                encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), self.compression_quality[self.video_quality]]
+                _, buffer = cv2.imencode(".jpg", frame, encode_param)
+                asyncio.run(self.rtp_client.send_video(buffer.tobytes()))
 
-        if audio_data:
+        # 处理音频数据
+        if audio_data is not None:
             asyncio.run(self.rtp_client.send_audio(audio_data))
 
     def stop_all(self):
@@ -208,27 +220,13 @@ class MediaManager:
         def display_thread():
             while self.display_running:
                 if self.frame_queue:
-                    # 从队列中取出一帧
                     frame = self.frame_queue.pop(0)
-                    start_time = time.time()
-
-                    # 调整帧的大小
-                    resized_frame = cv2.resize(frame, (960, 540))
-
-                    # 显示帧
+                    resized_frame = cv2.resize(frame, (self.width, self.height))
                     cv2.imshow("Video Stream", resized_frame)
-
-                    # 检测退出按键
                     key = cv2.waitKey(1)
                     if key == ord('q'):
-                        print("Exiting video display...")
                         self.stop_video_display()
                         break
-
-                    # 控制帧率
-                    elapsed_time = time.time() - start_time
-                    time_to_wait = max(0, self.frame_interval - elapsed_time)
-                    time.sleep(time_to_wait)
 
         threading.Thread(target=display_thread, daemon=True).start()
         print("Video display thread started.")
