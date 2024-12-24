@@ -5,11 +5,10 @@ from network.rtp_client import RTPClient
 from shared.uiHandler import UIHandler
 from shared.media_manager import MediaManager
 
-# server_ip = "10.32.118.226"
 server_ip = "10.16.180.184"
 server_port = 5555
 
-client_ip = "10.16.180.184"
+client_ip = "10.26.101.172"
 client_port = 5001
 
 
@@ -124,12 +123,12 @@ class OperationInterface:
             self.shared_data[data_type] = False  # 默认关闭
         self.shared_data[data_type] = not self.shared_data[data_type]
         if data_type == "screen" or data_type == "s":
-            if self.shared_data[data_type]:
+            if self.shared_data[data_type] and not self.shared_data["camera"]:
                 self.media_manager.start_screen_recording()
             else:
                 self.media_manager.stop_screen_recording()
         if data_type == "camera" or data_type == "c":
-            if self.shared_data[data_type]:
+            if self.shared_data[data_type] and not self.shared_data["screen"]:
                 self.media_manager.start_camera()
             else:
                 self.media_manager.stop_camera()
@@ -141,7 +140,10 @@ class OperationInterface:
         if data_type == "high" or data_type == "low" or data_type == "medium":
             self.media_manager.set_video_quality(data_type)
         state = "开启" if self.shared_data[data_type] else "关闭"
-        print(f"{data_type} 共享已{state}。")
+        if data_type in ["camera", "screen", "audio"]:
+            print(f"{data_type} 共享已{state}。")
+        else:
+            print(f"未知共享类型 {data_type}。")
 
     def start_ui(self):
         """启动 UI 界面用于展示接收的数据"""
