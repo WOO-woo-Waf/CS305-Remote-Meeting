@@ -1,5 +1,7 @@
 import asyncio
 import time
+from turtledemo.penrose import start
+
 import cv2
 import pyaudio
 import threading
@@ -44,11 +46,6 @@ class MediaManager:
         self.width, self.height = self.resolution_settings[self.video_quality]
         self.set_video_quality(self.video_quality)
 
-        # 视频播放相关
-        self.video_queues = {}  # 每个客户端的视频队列
-        self.video_threads = {}  # 每个客户端的播放线程
-        self.video_running = True
-
     def set_video_quality(self, quality):
         """
         设置视频质量，包括分辨率和压缩率。
@@ -75,14 +72,13 @@ class MediaManager:
                     break
 
                 # 调整分辨率
-                # frame = cv2.resize(frame, (self.width, self.height))
+                frame = cv2.resize(frame, (self.width, self.height))
                 self.process_and_send(video_data=frame)
 
                 # 确保帧率稳定
                 elapsed_time = time.time() - start_time
-                if elapsed_time < self.frame_interval:
-                    time_to_wait = self.frame_interval - elapsed_time
-                    time.sleep(time_to_wait)
+                time_to_wait = max(0, self.frame_interval - elapsed_time)
+                time.sleep(time_to_wait)
 
             cap.release()
 
@@ -140,14 +136,13 @@ class MediaManager:
                 screen = pyautogui.screenshot()
                 frame = np.array(screen)
                 frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-                # frame = cv2.resize(frame, (self.width, self.height))
+                frame = cv2.resize(frame, (self.width, self.height))
                 self.process_and_send(screen_data=frame)
 
                 # 确保帧率稳定
                 elapsed_time = time.time() - start_time
-                if elapsed_time < self.frame_interval:
-                    time_to_wait = self.frame_interval - elapsed_time
-                    time.sleep(time_to_wait)
+                time_to_wait = max(0, self.frame_interval - elapsed_time)
+                time.sleep(time_to_wait)
 
         threading.Thread(target=capture_screen, daemon=True).start()
         print("Screen recording started.")
@@ -209,75 +204,39 @@ class MediaManager:
         if audio_data is not None:
             asyncio.run(self.rtp_client.send_audio(audio_data))
 
-    async def play_video_stream(self, client_id, video_queue):
-        """
-        播放特定客户端的视频流。
-        :param client_id: 客户端 ID。
-        :param video_queue: 客户端的视频队列。
-        """
-        while self.video_running:
-            start_time = time.time()
-            frame = await video_queue.get()
-            if frame is None:  # 退出信号
-                break
-
-            try:
-                # 显示视频帧
-                resized_frame = cv2.resize(frame, (self.width, self.height))
-                cv2.imshow(f"Video Stream - Client {client_id}", resized_frame)
-                key = cv2.waitKey(1)
-                if key == ord('q'):
-                    await self.stop_video_display(client_id)
-                    break
-                # 确保帧率稳定
-                elapsed_time = time.time() - start_time
-                if elapsed_time < self.frame_interval:
-                    time_to_wait = self.frame_interval - elapsed_time
-                    time.sleep(time_to_wait)
-
-            except Exception as e:
-                print(f"Error displaying video for client {client_id}: {e}")
-
-        cv2.destroyWindow(f"Video Stream - Client {client_id}")
-
-    async def add_video(self, client_id, frame):
-        """
-        添加视频帧到对应客户端的视频队列。
-        如果客户端不存在，则创建新的队列和播放任务。
-        :param client_id: 客户端 ID。
-        :param frame: 视频帧。
-        """
-        if client_id not in self.video_queues:
-            # 创建新的视频队列和播放任务
-            video_queue = asyncio.Queue()
-            self.video_queues[client_id] = video_queue
-            self.video_threads[client_id] = asyncio.create_task(self.play_video_stream(client_id, video_queue))
-
-        # 将帧加入队列
-        await self.video_queues[client_id].put(frame)
-
-    async def stop_video_display(self, client_id=None):
-        """
-        停止特定客户端的视频播放，或者全部停止。
-        :param client_id: 客户端 ID。如果为 None，则停止所有客户端。
-        """
-        if client_id:
-            if client_id in self.video_queues:
-                await self.video_queues[client_id].put(None)  # 发送退出信号
-                self.video_threads.pop(client_id, None)
-                self.video_queues.pop(client_id, None)
-                print(f"Video display for client {client_id} stopped.")
-        else:
-            self.video_running = False
-            for client_id in list(self.video_queues.keys()):
-                await self.stop_video_display(client_id)
-
     def stop_all(self):
         """
-        停止所有媒体捕获和播放。
+        停止所有媒体捕获。
         """
         self.stop_camera()
         self.stop_microphone()
         self.stop_screen_recording()
-        asyncio.run(self.stop_video_display())  # 停止所有视频播放
-        print("All media capturing and playback stopped.")
+        print("All media capturing stopped.")
+
+    def start_video_display(self):
+        """
+        启动一个独立线程，用于显示视频帧。
+        """
+        self.display_running = True
+
+        def display_thread():
+            while self.display_running:
+                if self.frame_queue:
+                    frame = self.frame_queue.pop(0)
+                    resized_frame = cv2.resize(frame, (self.width, self.height))
+                    cv2.imshow("Video Stream", resized_frame)
+                    key = cv2.waitKey(1)
+                    if key == ord('q'):
+                        self.stop_video_display()
+                        break
+
+        threading.Thread(target=display_thread, daemon=True).start()
+        print("Video display thread started.")
+
+    def stop_video_display(self):
+        """
+        停止视频显示。
+        """
+        self.display_running = False
+        cv2.destroyAllWindows()
+        print("Video display stopped.")
