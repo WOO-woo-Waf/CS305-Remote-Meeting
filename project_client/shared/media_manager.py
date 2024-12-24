@@ -59,8 +59,6 @@ class MediaManager:
         self.width, self.height = self.resolution_settings[quality]
         print(f"Video quality set to {quality}. Resolution: {self.width}x{self.height}, Compression Quality: {self.compression_quality[quality]}")
 
-
-
     def start_camera(self):
         """
         打开摄像头，捕获视频帧并发送。
@@ -218,13 +216,26 @@ class MediaManager:
         :param client_id: 客户端 ID。
         :param video_queue: 客户端的视频队列。
         """
-        while self.video_running:
-            start_time = time.time()
-            frame = await video_queue.get()
-            if frame is None:  # 退出信号
-                break
+        idle_timeout = 3  # 设置队列为空的最大等待时间（秒）
+        last_frame_time = time.time()  # 记录最后一次获取帧的时间
 
+        while self.video_running:
             try:
+                # 检查队列是否为空
+                if video_queue.empty():
+                    elapsed_since_last_frame = time.time() - last_frame_time
+                    if elapsed_since_last_frame > idle_timeout:
+                        print(f"No frames received for client {client_id} for {idle_timeout} seconds. Closing window.")
+                        break  # 长时间没有新帧，退出播放任务
+
+                # 获取新帧
+                frame = await asyncio.wait_for(video_queue.get(), timeout=idle_timeout)
+                if frame is None:  # 退出信号
+                    break
+
+                # 更新最后获取帧的时间
+                last_frame_time = time.time()
+
                 # 显示视频帧
                 resized_frame = cv2.resize(frame, (self.width, self.height))
                 cv2.imshow(f"Video Stream - Client {client_id}", resized_frame)
@@ -232,16 +243,17 @@ class MediaManager:
                 if key == ord('q'):
                     await self.stop_video_display(client_id)
                     break
-                # 确保帧率稳定
-                elapsed_time = time.time() - start_time
-                if elapsed_time < self.frame_interval/1.5:
-                    time_to_wait = self.frame_interval/1.5 - elapsed_time
-                    time.sleep(time_to_wait)
 
+            except asyncio.TimeoutError:
+                # 超时未收到新帧，退出播放
+                print(f"No frames received for client {client_id} within timeout. Closing window.")
+                break
             except Exception as e:
                 print(f"Error displaying video for client {client_id}: {e}")
 
+        # 清理显示窗口
         cv2.destroyWindow(f"Video Stream - Client {client_id}")
+        del self.video_queues[client_id]
 
     async def add_video(self, client_id, frame):
         """
@@ -259,21 +271,44 @@ class MediaManager:
         # 将帧加入队列
         await self.video_queues[client_id].put(frame)
 
-    async def stop_video_display(self, client_id=None):
+    async def start_video_display(self, client_id):
         """
-        停止特定客户端的视频播放，或者全部停止。
-        :param client_id: 客户端 ID。如果为 None，则停止所有客户端。
+        启动客户端的视频播放。
+        :param client_id: 客户端 ID。
         """
-        if client_id:
-            if client_id in self.video_queues:
-                await self.video_queues[client_id].put(None)  # 发送退出信号
-                self.video_threads.pop(client_id, None)
-                self.video_queues.pop(client_id, None)
-                print(f"Video display for client {client_id} stopped.")
-        else:
-            self.video_running = False
-            for client_id in list(self.video_queues.keys()):
-                await self.stop_video_display(client_id)
+        if client_id in self.video_threads and self.video_running.get(client_id, False):
+            print(f"Video display for client {client_id} is already running.")
+            return
+
+        # 创建新的视频队列和播放任务
+        self.video_queues[client_id] = asyncio.Queue(maxsize=10)
+        self.video_threads[client_id] = asyncio.create_task(self.play_video_stream(client_id, self.video_queues[client_id]))
+        print(f"Started video display for client {client_id}.")
+
+    async def stop_video_display(self, client_id):
+        """
+        停止特定客户端的视频流。
+        :param client_id: 客户端 ID。
+        """
+        if client_id in self.video_threads:
+            self.video_running[client_id] = False
+            await self.video_queues[client_id].put(None)  # 发送退出信号
+            await self.video_threads[client_id]
+            await self.cleanup_client(client_id)
+            print(f"Stopped video display for client {client_id}.")
+
+    async def cleanup_client(self, client_id):
+        """
+        清理客户端资源。
+        :param client_id: 客户端 ID。
+        """
+        if client_id in self.video_threads:
+            del self.video_threads[client_id]
+        if client_id in self.video_queues:
+            del self.video_queues[client_id]
+        if client_id in self.video_running:
+            del self.video_running[client_id]
+        print(f"Cleaned up resources for client {client_id}.")
 
     def stop_all(self):
         """

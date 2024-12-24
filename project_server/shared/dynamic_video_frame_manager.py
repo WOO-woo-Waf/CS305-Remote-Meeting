@@ -1,18 +1,22 @@
+import asyncio
+import concurrent.futures
+
 import cv2
 import numpy as np
 import math
 
 
 class DynamicVideoFrameManager:
-    def __init__(self, frame_width, frame_height):
+    def __init__(self):
         """
         初始化动态视频帧管理器。
         :param frame_width: 每个客户端帧的宽度。
         :param frame_height: 每个客户端帧的高度。
         """
-        self.frame_width = frame_width
-        self.frame_height = frame_height
+        self.frame_width = 960
+        self.frame_height = 540
         self.video_frames = {}  # 存储每个会议的视频帧，键是会议 ID，值是 {客户端 ID: 帧数据} 的字典
+        self.executor = concurrent.futures.ThreadPoolExecutor()
 
     def initialize_meeting(self, meeting_id):
         """
@@ -41,6 +45,10 @@ class DynamicVideoFrameManager:
         """
         if meeting_id in self.video_frames and client_id in self.video_frames[meeting_id]:
             del self.video_frames[meeting_id][client_id]
+
+    async def _async_validate_and_resize_frame(self, frame):
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(self.executor, self._validate_and_resize_frame, frame)
 
     def merge_video_frames(self, meeting_id):
         """
@@ -85,13 +93,9 @@ class DynamicVideoFrameManager:
                     combined_frame[start_y:end_y, start_x:end_x] = resized_frame
                 index += 1
 
-        # 降低整体分辨率
-        reduced_resolution = (self.frame_width, self.frame_height)
-        combined_frame = cv2.resize(combined_frame, reduced_resolution)
-
         return combined_frame
 
-    def _validate_and_resize_frame(self, frame):
+    def _validate_and_resize_frame(self, frame, scale=0.5):
         """
         验证并调整帧格式，确保帧数据可以正确压缩。
         :param frame: 输入的单个帧。
@@ -110,6 +114,8 @@ class DynamicVideoFrameManager:
         # 确保帧像素值在 0-255 范围内
         frame = np.clip(frame, 0, 255)
 
+        target_width = int(self.frame_width * scale)
+        target_height = int(self.frame_height * scale)
         # 调整帧大小
         resized_frame = cv2.resize(frame, (self.frame_width, self.frame_height))
 

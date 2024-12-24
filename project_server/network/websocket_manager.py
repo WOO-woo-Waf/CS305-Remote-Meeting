@@ -134,8 +134,8 @@ class WebSocketManager:
             elif action == "CHECK_MEETING_ALL":
                 await self.check_meeting_all(client_id)
 
-            elif action == "CHANGE_CS_MODE_TO_SAME":
-                await self.change_cs_mode_to_same(client_id)
+            # elif action == "CHANGE_CS_MODE_TO_SAME":
+            #     await self.change_cs_mode_to_same(client_id)
 
             elif action == "SEND_MESSAGE":
                 # 处理客户端发送的聊天信息
@@ -157,8 +157,8 @@ class WebSocketManager:
             "meetings": meetings
         })
 
-    async def change_cs_mode_to_same(self, client_id):
-        self.rtp_manager.change_cs_mode_to_same(client_id)
+    # async def change_cs_mode_to_same(self, client_id):
+    #     self.rtp_manager.change_cs_mode_to_same(client_id)
 
     async def create_meeting(self, client_id, data):
         """处理创建会议请求"""
@@ -224,6 +224,12 @@ class WebSocketManager:
         if len(self.connection_manager.get_participants(meeting_id)) == 1:
             await self.stop_p2p(client_id)
             await self.stop_p2p(self.connection_manager.get_participants(meeting_id)[0])
+        elif len(self.connection_manager.get_participants(meeting_id)) == 2:
+            clients = list(self.rtp_manager.clients[meeting_id].keys())
+            ip1, port1 = self.rtp_manager.clients[meeting_id][clients[0]]
+            ip2, port2 = self.rtp_manager.clients[meeting_id][clients[1]]
+            await self.p2p_send_address(clients[0], clients[1], ip2, port2)
+            await self.p2p_send_address(clients[1], clients[0], ip1, port1)
 
         await self.send_message(client_id, {
             "action": "EXIT_MEETING_ACK",

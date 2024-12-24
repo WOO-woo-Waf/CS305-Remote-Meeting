@@ -55,7 +55,7 @@ class AudioPlayer:
             # 创建新的音频队列和任务
             audio_queue = asyncio.Queue()
             self.audio_queues[client_id] = audio_queue
-            asyncio.create_task(self.play_audio_stream(client_id, audio_queue))
+            await asyncio.create_task(self.play_audio_stream(client_id, audio_queue))
 
         # 将音频数据放入队列
         await self.audio_queues[client_id].put(audio_data)

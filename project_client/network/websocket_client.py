@@ -1,4 +1,5 @@
 import asyncio
+import time
 
 import websockets
 import json
@@ -88,10 +89,11 @@ class WebSocketClient:
         :param meeting_id: 会议 ID
         :param message: 文本消息内容
         """
+        timestamp = int(time.time() * 1000)  # 毫秒级时间戳
         send_message = {
             "action": "SEND_MESSAGE",
             "meeting_id": meeting_id,
-            "message": message
+            "message": message + f" 时间戳 ({timestamp})"
         }
         await self._send_message(send_message)
 
@@ -196,11 +198,14 @@ class WebSocketClient:
             elif action == "EXIT_MEETING_ACK":
                 # 处理离开会议确认
                 meeting_id = data.get("meeting_id")
+                self.cil.stop_p2p()
                 ui.update_text(f"[服务器响应] 已离开会议，会议 ID: {meeting_id}")
 
             elif action == "MEETING_CANCELED":
                 # 处理取消会议确认
                 meeting_id = data.get("meeting_id")
+                self.cil.cancel_ack = True
+                self.cil.stop_p2p()
                 ui.update_text(f"[服务器响应] 会议已取消，会议 ID: {meeting_id}")
 
             elif action == "NEW_MESSAGE":

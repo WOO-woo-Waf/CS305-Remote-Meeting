@@ -8,7 +8,7 @@ from shared.media_manager import MediaManager
 server_ip = "10.16.180.184"
 server_port = 5555
 
-client_ip = "10.26.101.172"
+client_ip = "10.16.180.184"
 client_port = 5001
 
 
@@ -24,7 +24,7 @@ class OperationInterface:
         self.status = "空闲"  # 当前状态
         self.conference_id = None  # 当前会议 ID
         self.on_meeting = False  # 是否正在会议中
-        self.shared_data = {"screen": False, "camera": True, "audio": True}  # 共享数据状态
+        self.shared_data = {"screen": True, "camera": False, "audio": True}  # 共享数据状态
         ui_start_event = threading.Event()
         self.ui_handler = UIHandler(ui_start_event)  # UI 窗口线程的处理对象
         self.web_socket = websocket  # WebSocket 连接
@@ -32,6 +32,7 @@ class OperationInterface:
         self.rtp_client = None
         self.media_manager = None
         self.rtp_mode = "unconnected"
+        self.cancel_ack = False
 
     def connect_to_p2p(self, ip, port):
         self.rtp_client.connect_to_p2p(ip, port)
@@ -45,8 +46,8 @@ class OperationInterface:
         await self.web_socket.register_rtp_address(client_ip, self.rtp_client.client_port, self.conference_id)
         print("RTP Client connected.")
         self.media_manager = MediaManager(self.rtp_client)
-        # self.media_manager.start_screen_recording()
-        self.media_manager.start_camera()
+        self.media_manager.start_screen_recording()
+        # self.media_manager.start_camera()
         self.media_manager.start_microphone()
 
     def display_help(self):
@@ -112,10 +113,15 @@ class OperationInterface:
         if self.on_meeting:
             print(f"正在取消会议 {self.conference_id}...")
             await self.web_socket.cancel_meeting(self.conference_id)
-            self.on_meeting = False
-            self.conference_id = None
-            self.status = "空闲"
-            print("会议已取消。")
+            await asyncio.sleep(1)
+            if self.cancel_ack:
+                self.cancel_ack = False
+                self.on_meeting = False
+                self.conference_id = None
+                self.status = "空闲"
+                print("会议已取消。")
+            else:
+                print("会议取消失败。")
         else:
             print("当前没有会议，无法取消。")
 
@@ -167,6 +173,7 @@ class OperationInterface:
         print("欢迎使用会议管理系统！输入 'help' 查看命令。")
         while True:
             current_status = f"({self.status})"
+            # 异步获取用户输入，并处理字符串
             user_input = await aioconsole.ainput(f"{current_status} 请输入指令: ")
             user_input = user_input.strip().lower()
             if user_input == "help":

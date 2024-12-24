@@ -9,12 +9,13 @@ import pyaudio
 import threading
 import numpy as np
 from collections import deque
+from asyncio import Queue
 
 from shared.Video_packet_assembler import VideoPacketAssembler
 from shared.media_manager import MediaManager
 from shared.audio_player import AudioPlayer
 
-MAX_UDP_PACKET_SIZE = 65000  # 定义一个最大 UDP 数据包大小，通常是 65535 字节
+MAX_UDP_PACKET_SIZE = 1500  # 定义一个最大 UDP 数据包大小，通常是 65535 字节
 
 media_manager = MediaManager(None)
 
@@ -29,6 +30,7 @@ class RTPClient:
         :param client_port: 客户端本地端口（默认 0 表示随机端口）
         :param client_id: 客户端 ID (UUID 格式)
         """
+        self.data_queue = Queue()
         self.server_ip = server_ip
         self.server_port = server_port
         self.p2p_ip = None
@@ -63,7 +65,8 @@ class RTPClient:
         print(f"RTP Client initialized with IP {self.client_ip} and port {self.client_port}")
         self.video_assemblers = None  # 视频包组装器
         self.frame_interval = 1 / 30  # 视频帧之间的时间间隔（30 FPS）
-        asyncio.create_task(self.receive_data())  # 开启接收任务
+        asyncio.create_task(self.receive_data())  # 启动接收任务
+        asyncio.create_task(self.process_data())  # 启动处理任务
         self.pipeline = (
             f"udpsrc port={self.server_port} ! application/x-rtp, payload=96 ! rtph264depay ! avdec_h264 "
             f"! videoconvert ! appsink"
@@ -269,25 +272,35 @@ class RTPClient:
         while True:
             try:
                 # 接收批量 RTP 数据包
-                data = await loop.sock_recv(self.sock, 65535)
+                data = await loop.sock_recv(self.sock, MAX_UDP_PACKET_SIZE + 100)
                 data_ = self.parse_rtp_packet(data)
-                # print(f"Received RTP packet from : {data_["timestamp"]}")
+                # 将数据放入队列中
+                await self.data_queue.put(data_)
+            except BlockingIOError:
+                await asyncio.sleep(0.01)  # 避免高 CPU 占用
 
+    async def process_data(self):
+        """
+        从队列中处理数据包。
+        """
+        while True:
+            data_ = await self.data_queue.get()  # 从队列获取数据
+            try:
                 payload_type = data_["payload_type"]
                 payload = data_["payload"]
                 sequence_number = data_["sequence_number"]
                 total_packets = data_["total_packets"]
                 client_id = data_["client_id"]
 
+                # print(f"Received RTP packet from {client_id} ({len(payload)} bytes)")
+                # print(f"Payload type: {payload_type}, Sequence number: {sequence_number}, Total packets: {total_packets}")
                 # 根据负载类型来播放数据
                 if payload_type == 0x01:  # 视频类型
-                    await asyncio.create_task(self.play_video(payload, sequence_number, total_packets, client_id))
+                    asyncio.create_task(self.play_video(payload, sequence_number, total_packets, client_id))
                 elif payload_type == 0x02:  # 音频类型
-                    # print("Playing audio...")
-                    await self.play_audio(data_["payload"], client_id)
-
-            except BlockingIOError:
-                await asyncio.sleep(0.01)
+                    asyncio.create_task(self.play_audio(payload, client_id))
+            except Exception as e:
+                print(f"Error processing data: {e}")
 
     def process_buffer(self):
         """
@@ -358,9 +371,10 @@ class RTPClient:
             # # 调整帧的大小
             # resized_frame = cv2.resize(frame, (1440, 810))
             #
+            # # print(f"Received video frame from client {client_id} ({len(video_payload)} bytes")
             # # 使用 cv2.imshow 显示帧
             # cv2.imshow(f"Video Stream_client {self.meeting_id} {self.client_port}", resized_frame)
-            #
+            # print(f"Video Stream_client {self.meeting_id} {self.client_port}")
             # # 等待按键事件并设置适当的退出条件
             # key = cv2.waitKey(1)
             # if key == ord('q'):  # 如果按下 'q' 键退出
