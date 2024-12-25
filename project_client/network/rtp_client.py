@@ -63,7 +63,7 @@ class RTPClient:
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 8 * 1024 * 1024)  # 增加发送缓冲区
 
         print(f"RTP Client initialized with IP {self.client_ip} and port {self.client_port}")
-        self.video_assemblers = None  # 视频包组装器
+        # self.video_assemblers = None  # 视频包组装器
         self.frame_interval = 1 / 30  # 视频帧之间的时间间隔（30 FPS）
         asyncio.create_task(self.receive_data())  # 启动接收任务
         asyncio.create_task(self.process_data())  # 启动处理任务
@@ -79,6 +79,7 @@ class RTPClient:
 
         # 自动启动视频接收
         # self.start_video_thread()
+        self.video_assemblers = {}  # 存储每个视频流的 VideoPacketAssembler
 
     def connect_to_p2p(self, ip, port):
         self.p2p_ip = ip
@@ -356,13 +357,12 @@ class RTPClient:
         :param sequence_number: 视频包的序列号
         :param total_packets: 视频总包数
         """
-        # 如果视频包组装器不存在，创建一个新的
-        if self.video_assemblers is None:
-            self.video_assemblers = VideoPacketAssembler(1920,1080)
-            self.video_assemblers.start_assembling(total_packets)
+        if client_id not in self.video_assemblers:
+            self.video_assemblers[client_id] = VideoPacketAssembler(frame_width=960, frame_height=540)
+            self.video_assemblers[client_id].start_assembling(total_packets)
 
         # 将视频包添加到组装器中
-        frame = self.video_assemblers.add_packet(video_payload, sequence_number, total_packets)
+        frame = await self.video_assemblers[client_id].add_packet(video_payload, sequence_number, total_packets)
 
         if frame is not None:
             # # 获取当前时间戳
