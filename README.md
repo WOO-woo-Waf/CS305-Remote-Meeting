@@ -5,7 +5,7 @@
 project_server是服务器端代码, 在终端中
 ```
 cd project_server 
-uvicorn main:app --reload
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 这里 ide 会有报错，但是不用管它可以正常运行,因为将两个项目放在一块儿了，它根目录不是原来的了
 
