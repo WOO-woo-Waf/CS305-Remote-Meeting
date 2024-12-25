@@ -59,6 +59,7 @@ class OperationInterface:
         print("cancel       取消当前会议")
         print("open/close camera 开启/关闭摄像头（不能与屏幕共享同时开启）")
         print("open/close screen 开启/关闭屏幕共享（不能与摄像头同时开启）")
+        print("open/close microphone 开启/关闭麦克风")
         print("change quality 调整视频质量 (low,medium,high)")
         print("help         显示帮助菜单")
         print("exit         退出界面")
